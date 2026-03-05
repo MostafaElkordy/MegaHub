@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" data-theme="light">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Mega Hub Dashboard</title>
+    <link rel="stylesheet" href="options.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="dashboard-wrapper">
+        <aside class="sidebar">
+            <div class="logo-area">
+                <img src="icons/icon48.png" alt="Mega Hub Logo" class="logo">
+                <h2>Mega Hub</h2>
+            </div>
+            <nav class="nav-links">
+                <a href="#general" class="nav-item active" data-tab="general">General</a>
+                <a href="#storage" class="nav-item" data-tab="storage">Smart Storage</a>
+                <a href="#about" class="nav-item" data-tab="about">About</a>
+            </nav>
+        </aside>
+        <main class="content">
+            <section id="general" class="tab-pane active">
+                <div class="page-header">
+                    <h1>General Settings</h1>
+                    <p>Configure extension behavior.</p>
+                </div>
+
+                <div class="card">
+                    <div class="setting-row">
+                        <div class="setting-text">
+                            <h3>Theme</h3>
+                            <p>Choose between light and dark mode</p>
+                        </div>
+                        <select id="opt-theme" class="modern-select">
+                            <option value="dark">Dark</option>
+                            <option value="light">Light</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-row">
+                        <div class="setting-text">
+                            <h3>Button Style</h3>
+                            <p>Appearance of download buttons on Instagram posts</p>
+                        </div>
+                        <select id="opt-button-style" class="modern-select">
+                            <option value="inline">Inline (Action Bar)</option>
+                            <option value="overlay">Overlay (On Media)</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <section id="storage" class="tab-pane">
+                <div class="page-header">
+                    <h1>Smart Storage</h1>
+                    <p>Bypass the typical browser "Downloads" folder and save directly to your organized local archive.
+                    </p>
+                </div>
+
+                <div class="card storage-card">
+                    <div class="card-header">
+                        <h3>Smart Auto-Routing Saving</h3>
+                        <label class="switch">
+                            <input type="checkbox" id="smart-routing-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <p class="desc">When enabled, downloaded media will be routed natively into categorized sub-folders
+                        (based on the profile name) directly inside your selected Master Folder, entirely bypassing the
+                        Chrome Downloads manager to prevent "Save As" spam.</p>
+
+                    <div class="folder-picker-group">
+                        <button id="btn-select-folder" class="btn primary">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z">
+                                </path>
+                            </svg>
+                            Select Master Folder
+                        </button>
+                        <div class="status-box">
+                            <span id="folder-status" class="status no-folder">No folder selected</span>
+                            <span id="folder-path" class="path-display"></span>
+                        </div>
+                    </div>
+                    <p class="warning-text" id="permission-warning"
+                        style="display:none; color: #ff6b6b; margin-top: 10px; font-size: 13px;">
+                        ⚠️ Chrome lost permission to access this folder. Please click "Change Folder" and select it
+                        again.
+                    </p>
+                </div>
+            </section>
+
+            <section id="about" class="tab-pane">
+                <div class="page-header">
+                    <h1>About Mega Hub</h1>
+                    <p>Version 1.0.0</p>
+                </div>
+                <div class="card">
+                    <p>Developed as the ultimate Instagram media harvesting and backup companion.</p>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="options.js" type="module"></script>
+</body>
+
+</html>

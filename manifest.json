@@ -1,0 +1,61 @@
+{
+    "manifest_version": 3,
+    "name": "Mega Hub",
+    "version": "1.0.0",
+    "description": "Download photos, videos, and Reels from Instagram in high quality with a single click.",
+    "permissions": [
+        "storage",
+        "downloads",
+        "offscreen",
+        "declarativeContent"
+    ],
+    "host_permissions": [
+        "*://*.instagram.com/*",
+        "*://*.cdninstagram.com/*",
+        "*://*.cdninstagram.net/*",
+        "*://*.fbcdn.net/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "*://*.instagram.com/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "css": [
+                "content.css"
+            ]
+        },
+        {
+            "matches": [
+                "*://*.instagram.com/*"
+            ],
+            "js": [
+                "inject.js"
+            ],
+            "run_at": "document_start",
+            "world": "MAIN"
+        }
+    ],
+    "action": {
+        "default_popup": "popup.html",
+        "default_icon": {
+            "16": "icons/icon16_gray.png",
+            "48": "icons/icon48_gray.png",
+            "128": "icons/icon128_gray.png"
+        }
+    },
+    "options_ui": {
+        "page": "options.html",
+        "open_in_tab": true
+    },
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    }
+}

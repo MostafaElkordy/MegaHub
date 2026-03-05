@@ -1,0 +1,582 @@
+/* Mega Hub - Optimized Download Button Styles */
+
+:root {
+    --mh-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mh-pink: rgba(225, 48, 108, 0.9);
+    --mh-success-color: #58d68d;
+    --mh-error-color: #ff6b6b;
+    --mh-dark-bg: rgba(0, 0, 0, 0.7);
+    --mh-toast-bg: rgba(20, 20, 20, 0.95);
+    --mh-stroke-dark: #262626;
+    --mh-transition-speed: 0.2s ease;
+    --mh-shadow-base: 0 4px 10px rgba(0, 0, 0, 0.3);
+    --mh-loading-color: var(--mh-success-color);
+}
+
+/* ============================================================ */
+/* Shared & Utility Styles                                      */
+/* ============================================================ */
+
+/* Shared SVG properties */
+.ig-dl-btn svg,
+.megahub-inline-dl svg,
+.megahub-grid-dl-btn svg,
+.megahub-reel-sidebar-btn svg {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Shared loading properties */
+.megahub-inline-dl.loading,
+.megahub-grid-dl-btn.loading,
+.megahub-reel-sidebar-btn.loading {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* Shared loading SVG color */
+.megahub-inline-dl.loading svg,
+.megahub-grid-dl-btn.loading svg,
+.megahub-reel-sidebar-btn.loading svg {
+    stroke: var(--mh-loading-color);
+}
+
+.megahub-grid-dl-btn.loading {
+    background: white;
+}
+
+/* Shared success colors */
+.megahub-inline-dl.success svg {
+    stroke: var(--mh-success-color);
+}
+
+.megahub-reel-sidebar-btn.success {
+    color: var(--mh-success-color);
+}
+
+.megahub-grid-dl-btn.success {
+    background: var(--mh-success-color);
+}
+
+.megahub-grid-dl-btn.success svg {
+    stroke: white;
+}
+
+/* ============================================================ */
+/* 1. Feed/Post download button                                 */
+/* ============================================================ */
+.ig-dl-btn {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    z-index: 9999;
+    background-color: var(--mh-dark-bg);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: var(--mh-font);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    backdrop-filter: blur(8px);
+    transition: background-color var(--mh-transition-speed), border-color var(--mh-transition-speed), transform var(--mh-transition-speed);
+    box-shadow: var(--mh-shadow-base);
+    contain: layout paint style;
+    /* Isolation to prevent Instagram layout recalculations */
+}
+
+.ig-dl-btn:hover {
+    background-color: var(--mh-pink);
+    border-color: transparent;
+    transform: translateY(-2px);
+}
+
+.ig-dl-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+.ig-dl-btn.loading {
+    cursor: wait;
+    background-color: var(--mh-loading-color);
+    border-color: transparent;
+}
+
+.ig-dl-btn.success {
+    background-color: var(--mh-success-color);
+    border-color: transparent;
+}
+
+/* ============================================================ */
+/* 1b. Inline download arrow (action bar next to bookmark)      */
+/* ============================================================ */
+.megahub-inline-dl {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    color: inherit;
+    border-radius: 50%;
+    transition: opacity 0.15s ease;
+}
+
+.megahub-inline-dl:hover {
+    opacity: 0.6;
+}
+
+.megahub-inline-dl:active {
+    opacity: 0.4;
+}
+
+.megahub-inline-dl svg {
+    width: 24px;
+    height: 24px;
+    stroke: var(--mh-stroke-dark);
+    stroke-width: 2;
+}
+
+/* ============================================================ */
+/* 2. Profile Grid overlay (hover to show download arrow)       */
+/* ============================================================ */
+.megahub-grid-overlay {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--mh-transition-speed);
+    z-index: 100;
+    contain: strict;
+    /* Strict containment because size is fixed by inset: 0 */
+}
+
+.megahub-grid-wrapper:hover .megahub-grid-overlay {
+    opacity: 1;
+}
+
+.megahub-grid-dl-btn {
+    position: absolute;
+    top: 60%;
+    left: 51%;
+    transform: translate(-50%, -50%);
+    pointer-events: auto;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.7);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color var(--mh-transition-speed), transform var(--mh-transition-speed), box-shadow var(--mh-transition-speed);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    padding: 0;
+    contain: layout paint style;
+}
+
+.megahub-grid-dl-btn:hover {
+    background: white;
+    transform: translate(-50%, -50%) scale(1.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.megahub-grid-dl-btn:active {
+    transform: translate(-50%, -50%) scale(0.95);
+}
+
+.megahub-grid-dl-btn svg {
+    width: 22px;
+    height: 22px;
+    stroke: var(--mh-stroke-dark);
+    stroke-width: 2.5;
+}
+
+/* ============================================================ */
+/* 3. Reels sidebar download button                             */
+/* ============================================================ */
+.megahub-reel-sidebar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    margin-top: 15px;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: transform var(--mh-transition-speed), opacity var(--mh-transition-speed);
+}
+
+.megahub-reel-sidebar-btn:hover {
+    transform: scale(1.05);
+    opacity: 0.6;
+}
+
+.megahub-reel-sidebar-btn:active {
+    transform: scale(0.9);
+}
+
+.megahub-reel-sidebar-btn svg {
+    width: 24px;
+    height: 24px;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+/* ============================================================ */
+/* 4. Download Progress Toast System                            */
+/* ============================================================ */
+.megahub-toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 2147483647;
+    display: flex;
+    flex-direction: column-reverse;
+    /* Newest at bottom */
+    gap: 12px;
+    pointer-events: none;
+    /* Let clicks pass through container */
+}
+
+.megahub-progress-toast {
+    background: var(--mh-toast-bg);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 10px 14px;
+    min-width: 260px;
+    max-width: 320px;
+    color: white;
+    font-family: var(--mh-font);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    animation: megahub-toast-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    contain: layout paint style;
+    pointer-events: auto;
+    /* Re-enable clicks for the toast itself */
+    transition: all 0.3s ease;
+}
+
+.megahub-progress-toast.removing {
+    animation: megahub-toast-out 0.25s ease forwards;
+}
+
+@keyframes megahub-toast-in {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes megahub-toast-out {
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    to {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+}
+
+/* Toast Header */
+.megahub-progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.megahub-progress-filename {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+    color: #f0f0f0;
+}
+
+.megahub-progress-cancel {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    padding: 2px;
+    font-size: 16px;
+    line-height: 1;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.megahub-progress-cancel:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--mh-error-color);
+}
+
+/* Toast Progress Track */
+.megahub-progress-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+}
+
+.megahub-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    border-radius: 4px;
+    transition: width 0.15s ease;
+    width: 0%;
+}
+
+/* Toast Stats */
+.megahub-progress-stats {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.megahub-progress-percent {
+    font-weight: 700;
+    font-size: 13px;
+    color: #667eea;
+}
+
+/* Toast States */
+.megahub-progress-toast.error .megahub-progress-fill {
+    background: var(--mh-error-color);
+}
+
+.megahub-progress-toast.error .megahub-progress-percent {
+    color: var(--mh-error-color);
+}
+
+.megahub-progress-toast.done .megahub-progress-fill {
+    background: linear-gradient(90deg, #2ecc71, #27ae60);
+    width: 100% !important;
+}
+
+.megahub-progress-toast.done .megahub-progress-percent {
+    color: #2ecc71;
+}
+
+/* Toast Pending Indicator */
+.megahub-pending-indicator {
+    background: var(--mh-dark-bg);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 6px 14px;
+    color: #f0f0f0;
+    font-family: var(--mh-font);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    animation: megahub-toast-in 0.3s ease;
+    align-self: flex-end;
+    /* Align right to match toasts */
+    margin-bottom: 4px;
+}
+
+/* ============================================================ */
+/* 5. Grid Multi-Select Harvester UI                            */
+/* ============================================================ */
+#megahub-fab-container {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    z-index: 2147483647;
+    display: flex;
+    flex-direction: column;
+    pointer-events: none;
+    align-items: flex-start;
+}
+
+.megahub-fab-btn {
+    pointer-events: auto;
+    background: var(--mh-dark-bg);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 10px 18px;
+    color: white;
+    font-family: var(--mh-font);
+    font-weight: 600;
+    font-size: 14px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.megahub-fab-btn:hover {
+    background: var(--mh-pink);
+    border-color: transparent;
+    transform: translateY(-2px);
+}
+
+.megahub-fab-btn.hidden {
+    display: none !important;
+}
+
+#megahub-select-toolbar {
+    pointer-events: auto;
+    background: var(--mh-toast-bg);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform-origin: bottom left;
+}
+
+#megahub-select-toolbar.hidden {
+    display: none !important;
+    transform: scale(0.9);
+    opacity: 0;
+}
+
+#megahub-select-count {
+    color: white;
+    font-family: var(--mh-font);
+    font-size: 14px;
+    font-weight: 700;
+    margin-right: 8px;
+}
+
+.megahub-toolbar-dl,
+.megahub-toolbar-cancel {
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-weight: 600;
+    font-family: var(--mh-font);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.megahub-toolbar-dl {
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    color: white;
+}
+
+.megahub-toolbar-dl:hover {
+    filter: brightness(1.1);
+}
+
+.megahub-toolbar-cancel {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.megahub-toolbar-cancel:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Selected Grid Item Overlay */
+.megahub-grid-wrapper.megahub-selected::after {
+    content: '✓';
+    position: absolute;
+    inset: 4px;
+    /* Slight inset to look nicer */
+    background: rgba(102, 126, 234, 0.7);
+    border: 2px solid white;
+    border-radius: 4px;
+    z-index: 101;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 40px;
+    font-weight: bold;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Hide normal download arrow when selected or in select mode */
+body.megahub-select-mode .megahub-grid-overlay {
+    display: none !important;
+}
+
+/* ============================================================ */
+/* 6. HD Profile Picture Downloader                             */
+/* ============================================================ */
+.megahub-avatar-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 10;
+}
+
+[data-megahub-avatar-wrapper]:hover .megahub-avatar-overlay {
+    opacity: 1;
+}
+
+.megahub-avatar-dl-btn {
+    background: var(--mh-pink);
+    border: none;
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: white;
+    transform: scale(0.8);
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-megahub-avatar-wrapper]:hover .megahub-avatar-dl-btn {
+    transform: scale(1);
+}
+
+.megahub-avatar-dl-btn:hover {
+    background: var(--mh-blue);
+    transform: scale(1.1) !important;
+}
+
+.megahub-avatar-dl-btn svg {
+    width: 22px;
+    height: 22px;
+}
