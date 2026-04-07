@@ -8,8 +8,10 @@
 console.log("Mega Hub: Content script loaded");
 
 // Immediately sync state to prevent UI flicker of native audio icon
-chrome.storage.sync.get({ videoControlsEnabled: false }, (prefs) => {
+chrome.storage.sync.get({ videoControlsEnabled: false, hoverAutoplayEnabled: false }, (prefs) => {
     if (prefs.videoControlsEnabled) document.documentElement.setAttribute('data-megahub-vc', 'true');
+    // Global flag for immediate use if needed before injectButtons()
+    window._hoverAutoplayEnabled = prefs.hoverAutoplayEnabled;
 });
 
 // ============================================================
@@ -80,7 +82,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 const SELECTORS = {
     links: 'a[href*="/p/"], a[href*="/reel/"], a[href*="/reels/"], a[href*="/tv/"]',
     media: 'img[srcset], img[style*="object-fit"], video, canvas',
-    bookmark: 'svg[aria-label="Save"], svg[aria-label="حفظ"], svg[aria-label="Remove"]',
+    // Vector Fingerprint: Empty bookmark = polygon points="20 21", Saved = path d="M20 22a"
+    bookmark: 'svg:has(polygon[points^="20 21"]), svg:has(path[d^="M20 22a"])',
     buttons: '.ig-dl-btn, .megahub-inline-dl, .megahub-reel-sidebar-btn, .megahub-grid-dl-btn'
 };
 
@@ -103,6 +106,16 @@ const SVG_TEMPLATES = {
     doneSmall: (() => {
         const t = document.createElement('template');
         t.innerHTML = `<svg viewBox="0 0 24 24" class="megahub-icon"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        return t;
+    })(),
+    volumeMuted: (() => {
+        const t = document.createElement('template');
+        t.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" aria-label="Volume is muted" class="megahub-icon" fill="currentColor" height="12" role="img" viewBox="0 0 48 48" width="12"><path clip-rule="evenodd" d="M1.5 13.3c-.8 0-1.5.7-1.5 1.5v18.4c0 .8.7 1.5 1.5 1.5h8.7l12.9 12.9c.9.9 2.5.3 2.5-1v-9.8c0-.4-.2-.8-.4-1.1l-22-22c-.3-.3-.7-.4-1.1-.4h-.6zm46.8 31.4-5.5-5.5C44.9 36.6 48 31.4 48 24c0-11.4-7.2-17.4-7.2-17.4-.6-.6-1.6-.6-2.2 0L37.2 8c-.6.6-.6 1.6 0 2.2 0 0 5.7 5 5.7 13.8 0 5.4-2.1 9.3-3.8 11.6L35.5 32c1.1-1.7 2.3-4.4 2.3-8 0-6.8-4.1-10.3-4.1-10.3-.6-.6-1.6-.6-2.2 0l-1.4 1.4c-.6.6-.6 1.6 0 2.2 0 0 2.6 2 2.6 6.7 0 1.8-.4 3.2-.9 4.3L25.5 22V1.4c0-1.3-1.6-1.9-2.5-1L13.5 10 3.3-.3c-.6-.6-1.5-.6-2.1 0L-.2 1.1c-.6.6-.6 1.5 0 2.1L4 7.6l26.8 26.8 13.9 13.9c.6.6 1.5.6 2.1 0l1.4-1.4c.7-.6.7-1.6.1-2.2z" fill-rule="evenodd"></path></svg>`;
+        return t;
+    })(),
+    volumeUnmuted: (() => {
+        const t = document.createElement('template');
+        t.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" aria-label="Volume is playing" class="megahub-icon" fill="currentColor" height="12" role="img" viewBox="0 0 24 24" width="12"><path d="M16.636 7.028a1.5 1.5 0 1 0-2.395 1.807 5.365 5.365 0 0 1 1.103 3.17 5.378 5.378 0 0 1-1.105 3.176 1.5 1.5 0 1 0 2.395 1.806 8.396 8.396 0 0 0 1.71-4.981 8.39 8.39 0 0 0-1.708-4.978Zm3.73-2.332A1.5 1.5 0 1 0 18.04 6.59 8.823 8.823 0 0 1 20 12.007a8.798 8.798 0 0 1-1.96 5.415 1.5 1.5 0 0 0 2.326 1.894 11.672 11.672 0 0 0 2.635-7.31 11.682 11.682 0 0 0-2.635-7.31Zm-8.963-3.613a1.001 1.001 0 0 0-1.082.187L5.265 6H2a1 1 0 0 0-1 1v10.003a1 1 0 0 0 1 1h3.265l5.01 4.682.02.021a1 1 0 0 0 1.704-.814L12.005 2a1 1 0 0 0-.602-.917Z"></path></svg>`;
         return t;
     })()
 };
@@ -180,12 +193,22 @@ let _videoControlsGradientHeight = 75;
 let _videoControlsPersistent = false;
 let _fullscreenNavStyle = 'vertical';
 let _showFullscreenToolbar = true;
+let _hoverAutoplayEnabled = false;
 
 // ============================================================
 // Main Entry: Inject download buttons on all supported pages
 // ============================================================
 async function injectButtons() {
-    let settings = { buttonStyle: 'inline', videoControlsEnabled: false, gpuAccelerationEnabled: false, videoControlsGradientHeight: 75, videoControlsPersistent: false, fullscreenNavStyle: 'vertical', showFullscreenToolbar: true };
+    let settings = { 
+        buttonStyle: 'inline', 
+        videoControlsEnabled: false, 
+        gpuAccelerationEnabled: false, 
+        videoControlsGradientHeight: 75, 
+        videoControlsPersistent: false, 
+        fullscreenNavStyle: 'vertical', 
+        showFullscreenToolbar: true,
+        hoverAutoplayEnabled: false
+    };
     try {
         settings = await chrome.storage.sync.get(settings);
     } catch (e) {
@@ -199,6 +222,8 @@ async function injectButtons() {
     _videoControlsPersistent = settings.videoControlsPersistent;
     _fullscreenNavStyle = settings.fullscreenNavStyle;
     _showFullscreenToolbar = settings.showFullscreenToolbar;
+    _hoverAutoplayEnabled = settings.hoverAutoplayEnabled;
+    window._hoverAutoplayEnabled = _hoverAutoplayEnabled;
 
     // Call all — each function checks _currentButtonStyle and skips if not its mode
     injectFeedButtons();
@@ -233,6 +258,9 @@ chrome.runtime.onMessage.addListener((request) => {
         if (_videoControlsEnabled) document.documentElement.setAttribute('data-megahub-vc', 'true');
         else document.documentElement.removeAttribute('data-megahub-vc');
         if (_videoControlsEnabled) injectVideoControls();
+    } else if (request.action === 'toggleHoverAutoplay') {
+        _hoverAutoplayEnabled = request.enabled;
+        window._hoverAutoplayEnabled = _hoverAutoplayEnabled;
     } else if (request.action === 'toggleGpuAcceleration') {
         _gpuAccelerationEnabled = request.enabled;
         document.documentElement.classList.toggle('mh-gpu-acceleration', _gpuAccelerationEnabled);
@@ -319,7 +347,7 @@ function injectFeedInlineButtons() {
         if (!hasVideo && !hasImage) return;
 
         // Find the bookmark (Save) button inside this article
-        const bookmarkSvg = article.querySelector('svg[aria-label="Save"], svg[aria-label="حفظ"], svg[aria-label="Remove"]');
+        const bookmarkSvg = article.querySelector(SELECTORS.bookmark);
         if (!bookmarkSvg) return;
 
         const bookmarkBtn = bookmarkSvg.closest('button') || bookmarkSvg.closest('div[role="button"]');
@@ -1065,7 +1093,7 @@ function injectReelsSidebarButton() {
     if (_currentButtonStyle !== 'inline') return;
 
     // Target the Bookmark/Save button
-    const bookmarkButtons = document.querySelectorAll('svg[aria-label="Save"], svg[aria-label="حفظ"], svg[aria-label="Remove"]');
+    const bookmarkButtons = document.querySelectorAll(SELECTORS.bookmark);
 
     bookmarkButtons.forEach(svgEl => {
         const actionBtn = svgEl.closest('button') || svgEl.closest('div[role="button"]');
@@ -1611,6 +1639,8 @@ function injectVideoControls() {
 
     function setupVideo(video) {
         if (video.dataset.megahubControls) return;
+        // Never process hover autoplay preview videos - they have their own independent audio system
+        if (video.classList.contains('megahub-hover-video')) return;
         video.dataset.megahubControls = 'true';
 
         // Wait for the video to have a proper parent
@@ -1622,8 +1652,9 @@ function injectVideoControls() {
         if (!root) {
             let curr = video.parentElement;
             while (curr && curr !== document.body) {
-                // Pinpoint the localized wrapper by checking for any standard sibling Native Control SVG
-                if (curr.querySelector('svg[aria-label*="Like" i], svg[aria-label*="udio" i], svg[aria-label*="Share" i], svg[aria-label*="Comment" i]')) {
+                // Pinpoint the localized wrapper using W3C ARIA roles + Vector Fingerprints (language-agnostic)
+                // role="slider" = volume, heart path = Like, paper-plane polygon = Share, bubble path = Comment
+                if (curr.querySelector('[role="slider"], svg:has(path[d*="16.792"]), svg:has(path[d*="3.46"]), svg:has(polygon[points*="11.698"]), svg:has(path[d*="20.656"])')) {
                     root = curr;
                     break;
                 }
@@ -1808,17 +1839,15 @@ function injectVideoControls() {
             const isDisabled = document.documentElement.classList.contains('megahub-video-controls-disabled');
 
             // --- Tag Proxy Node ---
+            // Uses SVG Vector Fingerprinting — the tag icon has unique path geometry (M21.11 / M12 12c3)
+            // that is mathematically identical regardless of display language.
             if (!hasFoundTagNode) {
-                const allTagSvgs = root.querySelectorAll('svg[aria-label*="Tag" i], svg[aria-label*="tag" i], svg[aria-label*="person" i]');
-                let targetTagSvg = null;
-                for (let s of allTagSvgs) {
-                    // Safe-guard: Reject any icon embedded in an anchor link (e.g. Profile Pictures)
-                    if (!s.closest('.megahub-proxy-tag') && !s.closest('.megahub-video-controls') && !s.closest('a')) {
-                        targetTagSvg = s; break;
-                    }
-                }
-                if (targetTagSvg) {
-                    nativeTagNode = getExactButtonWrapper(targetTagSvg);
+                const tagSvg = root.querySelector(
+                    'svg:has(path[d^="M21.11"]):not([class*="megahub-"]), svg:has(path[d^="M12 12c3"]):not([class*="megahub-"])'
+                );
+                if (tagSvg && !tagSvg.closest('.megahub-video-controls, .megahub-proxy-tag') && !tagSvg.closest('a')) {
+                    const btn = tagSvg.closest('button, [role="button"]');
+                    nativeTagNode = btn || getExactButtonWrapper(tagSvg);
                     if (nativeTagNode) hasFoundTagNode = true;
                 }
             }
@@ -1833,28 +1862,61 @@ function injectVideoControls() {
             }
 
             // --- Audio Proxy Node ---
+            // Strategy 1: W3C role="slider" (some DOM variants)
+            // Strategy 2: SVG Vector Fingerprint
+            // Strategy 3: Geometric detection (bottom-right small circular button with SVG)
+            // IMPORTANT: Do NOT use closest('[class*="megahub-"]') — it matches megahub-video-root on the root!
             if (!hasFoundAudioNode) {
-                const allAudioSvgs = root.querySelectorAll('svg[aria-label*="udio" i], svg[aria-label*="Audio" i], svg[aria-label*="Muted" i], svg[aria-label*="muted" i], svg[aria-label*="صوت" i]');
-                let targetAudioSvg = null;
-                for (let s of allAudioSvgs) {
-                    // Ignore elements structurally wrapped in anchor links (e.g., Profile picture embedded audio icons)
-                    if (!s.closest('.megahub-video-controls') && !s.closest('a')) {
-                        targetAudioSvg = s; break;
+                let audioTarget = null;
+
+                // Strategy 1: Find volume slider → target the INNER [role="button"] for click dispatching
+                // CSS hides the outer slider, but React's event handler is on the button inside
+                const volumeSlider = root.querySelector('[role="slider"]');
+                if (volumeSlider && !volumeSlider.closest('.megahub-video-controls')) {
+                    audioTarget = volumeSlider.querySelector('[role="button"]') || volumeSlider;
+                }
+
+                // Strategy 2: Vector Fingerprint fallback
+                // Path "1.5 13.3" = Muted speaker, Path "16.636" = Unmuted speaker
+                if (!audioTarget) {
+                    const audioSvg = root.querySelector(
+                        'svg:has(path[d*="1.5 13.3"]), svg:has(path[d*="16.636"])'
+                    );
+                    if (audioSvg && !audioSvg.closest('.megahub-video-controls, .megahub-hover-audio-btn') && !audioSvg.closest('a')) {
+                        audioTarget = audioSvg.closest('[role="button"], button') || audioSvg.parentElement;
                     }
                 }
-                if (targetAudioSvg) {
-                    // Find strictly the precise wrapper that acts as the grey circle, ignoring huge wrappers
-                    nativeAudioNode = getExactButtonWrapper(targetAudioSvg);
-                    if (nativeAudioNode) hasFoundAudioNode = true;
 
-                    // --- Reels: Find the bottom overlay container by walking up from the audio SVG ---
+                // Strategy 3: Geometric detection — find small button with SVG in the bottom-right
+                if (!audioTarget) {
+                    const videoRect = video.getBoundingClientRect();
+                    const candidates = root.querySelectorAll('[role="button"], button');
+                    for (const candidate of candidates) {
+                        if (candidate.closest('.megahub-video-controls, .megahub-hover-audio-btn')) continue;
+                        if (candidate.closest('a')) continue;
+                        if (!candidate.querySelector('svg')) continue;
+                        const r = candidate.getBoundingClientRect();
+                        // Must be small (< 80px), in bottom-right quadrant of video, not our controls
+                        if (r.width > 10 && r.width < 80 && r.height > 10 && r.height < 80 &&
+                            r.right > videoRect.right - 80 &&
+                            r.bottom > videoRect.bottom - 80 &&
+                            r.left > videoRect.left + videoRect.width * 0.5) {
+                            audioTarget = candidate;
+                            break;
+                        }
+                    }
+                }
+
+                if (audioTarget) {
+                    nativeAudioNode = audioTarget;
+                    hasFoundAudioNode = true;
+
+                    // --- Reels: Find the bottom overlay container ---
                     if (isReelsContext && !nativeBottomOverlay) {
                         const containerRect = container.getBoundingClientRect();
-                        let el = targetAudioSvg.parentElement;
+                        let el = audioTarget.parentElement;
                         for (let i = 0; i < 12 && el && el !== root && el !== document.body; i++) {
                             const rect = el.getBoundingClientRect();
-                            // The bottom overlay should span at least 50% of the video width
-                            // and be positioned near the bottom of the container
                             if (rect.width > containerRect.width * 0.5 &&
                                 rect.bottom > containerRect.bottom - 30 &&
                                 rect.height > 40 && rect.height < containerRect.height * 0.6) {
@@ -1999,21 +2061,28 @@ function injectVideoControls() {
                 return;
             }
 
-            // If we found Instagram's exact native audio wrapper, dispatch a real click event
-            // React synthesizes events, sometimes primitive .click() fails on divs, but MouseEvent always bubbles nicely
-            if (nativeAudioNode) {
-                const clickEvent = new MouseEvent('click', {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window
-                });
-                nativeAudioNode.dispatchEvent(clickEvent);
-            } else {
-                // Fallback in case IG structure changes radically
-                const newState = !video.muted;
-                video.muted = newState;
-                setTimeout(() => { video.muted = newState; }, 10);
+            // Primary: Toggle video.muted directly — most reliable across all DOM states
+            const newMuted = !video.muted;
+            video.muted = newMuted;
+            // Double-set to fight Instagram's state override
+            setTimeout(() => { video.muted = newMuted; }, 10);
+            setTimeout(() => { video.muted = newMuted; }, 50);
+
+            // Secondary: Also click the native node as reinforcement (if connected)
+            // This ensures Instagram's React state stays in sync
+            if (nativeAudioNode && nativeAudioNode.isConnected) {
+                // Temporarily restore pointer-events so the click can propagate
+                const origPE = nativeAudioNode.style.pointerEvents;
+                nativeAudioNode.style.pointerEvents = 'auto';
+                nativeAudioNode.dispatchEvent(new MouseEvent('click', {
+                    bubbles: true, cancelable: true, view: window
+                }));
+                setTimeout(() => { nativeAudioNode.style.pointerEvents = origPE; }, 100);
             }
+
+            // Allow re-detection since IG may re-render the audio button after state change
+            hasFoundAudioNode = false;
+            updateUI();
         });
 
         fsBtn.addEventListener('pointerdown', (e) => {
@@ -2629,13 +2698,17 @@ function mhNavigateFullscreen(directionStep) {
 function _findIgNavButton(direction) {
     const isNext = direction > 0;
 
-    // Method 1: aria-label based
-    const ariaLabels = isNext
-        ? ['Next', 'Go to next']
-        : ['Go back', 'Previous'];
-    for (const label of ariaLabels) {
-        const btn = document.querySelector(`[role="button"][aria-label*="${label}" i], button[aria-label*="${label}" i]`);
-        if (btn && btn.offsetParent !== null) return btn;
+    // Method 1: SVG Polyline Chevron Geometry (Language-Agnostic)
+    // Instagram's carousel chevrons use mathematically consistent polyline coordinates
+    const chevronPoints = isNext ? '9 18 15 12 9 6' : '15 18 9 12 15 6';
+    const allSvgs = document.querySelectorAll('button svg, [role="button"] svg');
+    for (const svg of allSvgs) {
+        if (svg.closest('.megahub-fs-nav-btn') || svg.closest('.mh-action-btn')) continue;
+        const polyline = svg.querySelector('polyline');
+        if (polyline && polyline.getAttribute('points')?.includes(chevronPoints)) {
+            const btn = svg.closest('button, [role="button"]');
+            if (btn && btn.offsetParent !== null) return btn;
+        }
     }
 
     // Method 2: Find edge-positioned chevron button
@@ -2706,3 +2779,131 @@ function _waitForNewVideo(oldVideo, oldSrc, callback, maxWait = 3000) {
 
     requestAnimationFrame(check);
 }
+
+// ============================================================
+// Hover Autoplay for Grid Items (Reels / Posts)
+// ============================================================
+(function initHoverAutoplay() {
+    let hoverTimeout = null;
+    let activeVideo = null;
+    let activeAudioBtn = null;
+    let currentTarget = null;
+
+    document.addEventListener('mouseover', (e) => {
+        if (!window._hoverAutoplayEnabled) return;
+        
+        // Use Global Selector to support all tabs (Reels, Tagged, Saved, etc.)
+        const link = e.target.closest(SELECTORS.links);
+        if (!link) return;
+
+        // Size-based thumbnail detection (Robust against IG changing DOM from img -> div.bg -> canvas)
+        if (link.offsetWidth < 50 || link.offsetHeight < 50) return;
+
+        if (currentTarget === link) return;
+
+        clearTimeout(hoverTimeout);
+        cleanupActiveVideo();
+
+        currentTarget = link;
+
+        // 300ms delay to prevent fetch spam on fast scroll
+        hoverTimeout = setTimeout(async () => {
+            if (currentTarget !== link) return;
+
+            // Use the global regex to accurately extract shortcodes from all URL variants
+            const match = REGEX.shortcode.exec(link.href);
+            if (!match) return;
+            const shortcode = match[2];
+
+            const data = await requestPostData(shortcode);
+            
+            // Re-check target constraint after async wait
+            if (currentTarget !== link) return;
+
+            if (data && data.success && data.videoUrl) {
+                // Prepare parent block for absolute positioning overlay
+                const computedStyle = window.getComputedStyle(link);
+                if (computedStyle.position === 'static') {
+                    link.style.position = 'relative';
+                }
+
+                activeVideo = document.createElement('video');
+                activeVideo.src = data.videoUrl;
+                activeVideo.className = 'megahub-hover-video';
+                activeVideo.muted = true;
+                activeVideo.loop = true;
+                activeVideo.autoplay = true;
+                activeVideo.playsInline = true;
+                activeVideo.crossOrigin = 'anonymous';
+                activeVideo.style.zIndex = '99'; // Force above any inner IG elements
+                
+                link.appendChild(activeVideo);
+
+                const parent = link.parentElement;
+                if (window.getComputedStyle(parent).position === 'static') {
+                    parent.style.position = 'relative';
+                }
+
+                activeAudioBtn = document.createElement('div');
+                activeAudioBtn.className = 'megahub-hover-audio-btn';
+                activeAudioBtn.style.zIndex = '100'; // Make sure it stays on top of link
+                activeAudioBtn.appendChild(SVG_TEMPLATES.volumeMuted.content.cloneNode(true));
+                
+                ['click', 'mousedown', 'pointerdown', 'touchstart'].forEach(evt => {
+                    activeAudioBtn.addEventListener(evt, (ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        
+                        if (evt === 'click') {
+                            activeVideo.muted = !activeVideo.muted;
+                            activeAudioBtn.innerHTML = '';
+                            activeAudioBtn.appendChild(
+                                activeVideo.muted 
+                                    ? SVG_TEMPLATES.volumeMuted.content.cloneNode(true) 
+                                    : SVG_TEMPLATES.volumeUnmuted.content.cloneNode(true)
+                            );
+                        }
+                    });
+                });
+                
+                parent.appendChild(activeAudioBtn);
+
+                // Smooth fade-in ONLY when ready to play (avoids black flashes)
+                activeVideo.addEventListener('canplay', () => {
+                    if (activeVideo) activeVideo.style.opacity = '1';
+                });
+                
+                activeVideo.play().catch(() => {});
+            }
+        }, 300); 
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        if (!currentTarget) return;
+        
+        // Ensure mouse has actually left the whole link container AND the audio button
+        const isChildOfLink = e.relatedTarget && currentTarget.contains(e.relatedTarget);
+        const isAudioBtn = e.relatedTarget && activeAudioBtn && (e.relatedTarget === activeAudioBtn || activeAudioBtn.contains(e.relatedTarget));
+
+        if (isChildOfLink || isAudioBtn) {
+            return;
+        }
+
+        clearTimeout(hoverTimeout);
+        cleanupActiveVideo();
+        currentTarget = null;
+    });
+
+    function cleanupActiveVideo() {
+        if (activeVideo) {
+            activeVideo.pause();
+            activeVideo.removeAttribute('src');
+            activeVideo.remove();
+            activeVideo = null;
+        }
+        if (activeAudioBtn) {
+            activeAudioBtn.remove();
+            activeAudioBtn = null;
+        }
+    }
+})();

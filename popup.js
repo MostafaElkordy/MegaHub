@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const themeToggle = document.getElementById('theme-toggle');
     const downloadCarouselAllToggle = document.getElementById('download-carousel-all');
     const videoControlsToggle = document.getElementById('video-controls-toggle');
+    const hoverAutoplayToggle = document.getElementById('hover-autoplay-toggle');
     const gpuAccelerationToggle = document.getElementById('gpu-acceleration-toggle');
     const buttonStyleSelect = document.getElementById('button-style');
     const smartRoutingToggle = document.getElementById('smart-routing-toggle');
@@ -21,12 +22,14 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadCarouselAll: false,
         buttonStyle: 'inline',
         videoControlsEnabled: false,
+        hoverAutoplayEnabled: false,
         gpuAccelerationEnabled: false,
         smartRoutingEnabled: false
     }, (result) => {
         themeToggle.checked = result.theme === 'dark';
         downloadCarouselAllToggle.checked = result.downloadCarouselAll;
         videoControlsToggle.checked = result.videoControlsEnabled;
+        hoverAutoplayToggle.checked = result.hoverAutoplayEnabled;
         gpuAccelerationToggle.checked = result.gpuAccelerationEnabled;
         smartRoutingToggle.checked = result.smartRoutingEnabled;
         buttonStyleSelect.value = result.buttonStyle;
@@ -54,6 +57,16 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs[0]?.url?.includes('instagram.com')) {
                 chrome.tabs.sendMessage(tabs[0].id, { action: 'toggleVideoControls', enabled: isEnabled }).catch(() => {});
+            }
+        });
+    });
+
+    hoverAutoplayToggle.addEventListener('change', (e) => {
+        const isEnabled = e.target.checked;
+        chrome.storage.sync.set({ hoverAutoplayEnabled: isEnabled });
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]?.url?.includes('instagram.com')) {
+                chrome.tabs.sendMessage(tabs[0].id, { action: 'toggleHoverAutoplay', enabled: isEnabled }).catch(() => {});
             }
         });
     });

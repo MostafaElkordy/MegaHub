@@ -253,15 +253,21 @@
 
         if (action !== 'getPostData' || !shortcode) return;
 
-        // Check cache first
+        // Check cache first — only fast-return if video data is complete
         let result = window.__megahub_cache.get(shortcode);
 
-        if (result) {
+        if (result && result.videoUrl) {
             sendResult(requestId, result);
             return;
         }
 
-        // Method 1: Instagram Relay/GraphQL via window.require
+        // Cache may have incomplete data (thumbnail-only from grid API preload).
+        // Save it as fallback for image downloads, then let Relay fetch full video data.
+        const cachedFallback = result;
+        result = undefined;
+
+        // Primary Method: Instagram Relay/GraphQL via window.require
+        // Uses Instagram's internal module system — fastest and most reliable
         if (!result) {
             try {
                 if (typeof window.require === 'function') {
@@ -285,65 +291,8 @@
             } catch (e) { /* silent fail */ }
         }
 
-        // Method 2: Direct JSON endpoint (?__a=1&__d=dis)
-        if (!result) {
-            try {
-                const resp = await originalFetch(`https://www.instagram.com/p/${shortcode}/?__a=1&__d=dis`, {
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'include'
-                });
-                if (resp.ok) {
-                    extractAndCacheMedia(await resp.json());
-                    result = window.__megahub_cache.get(shortcode);
-                }
-            } catch (e) { /* silent fail */ }
-        }
-
-        // Method 3: GraphQL POST endpoint
-        if (!result) {
-            try {
-                const appId = getAppId();
-                const variables = JSON.stringify({
-                    shortcode,
-                    child_comment_count: 3,
-                    fetch_comment_count: 40,
-                    parent_comment_count: 24,
-                    has_threaded_comments: true
-                });
-                const resp = await originalFetch('https://www.instagram.com/graphql/query/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-IG-App-ID': appId,
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'include',
-                    body: `variables=${encodeURIComponent(variables)}&doc_id=8845758582119845`,
-                });
-                if (resp.ok) {
-                    extractAndCacheMedia(await resp.json());
-                    result = window.__megahub_cache.get(shortcode);
-                }
-            } catch (e) { /* silent fail */ }
-        }
-
-        // Method 4: Parse HTML page as last resort
-        if (!result) {
-            try {
-                const resp = await originalFetch(`https://www.instagram.com/p/${shortcode}/`, {
-                    credentials: 'include'
-                });
-                if (resp.ok) {
-                    const html = await resp.text();
-                    const videoMatch = html.match(/"video_url"\s*:\s*"(https?:[^"]+)"/);
-                    if (videoMatch) {
-                        const url = videoMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-                        result = { videoUrl: url, mediaType: 'video' };
-                    }
-                }
-            } catch (e) { /* silent fail */ }
-        }
-
+        // If Relay failed, use original cached data as fallback (for image downloads)
+        if (!result) result = cachedFallback;
         sendResult(requestId, result);
     });
 

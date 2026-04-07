@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const themeSelect = document.getElementById('opt-theme');
     const buttonStyleSelect = document.getElementById('opt-button-style');
     const videoControlsToggle = document.getElementById('opt-video-controls-toggle');
+    const hoverAutoplayToggle = document.getElementById('opt-hover-autoplay-toggle');
     const gradientSliderRow = document.getElementById('gradient-slider-row');
     const optGradientSlider = document.getElementById('opt-gradient-slider');
     const gradientValDisplay = document.getElementById('gradient-val-display');
@@ -49,12 +50,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         fullscreenNavStyle: 'vertical',
         showFullscreenToolbar: true,
         gpuAccelerationEnabled: false,
+        hoverAutoplayEnabled: false,
         carouselNamingFormat: 'real_id',
         customCarouselSuffix: 'slide'
     }, (res) => {
         themeSelect.value = res.theme;
         buttonStyleSelect.value = res.buttonStyle;
         videoControlsToggle.checked = res.videoControlsEnabled;
+        hoverAutoplayToggle.checked = res.hoverAutoplayEnabled;
         persistentControlsToggle.checked = res.videoControlsPersistent;
         fullscreenNavSelect.value = res.fullscreenNavStyle;
         fullscreenToolbarToggle.checked = res.showFullscreenToolbar;
@@ -105,6 +108,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
             tabs.forEach(tab => {
                 chrome.tabs.sendMessage(tab.id, { action: 'toggleVideoControls', enabled: isEnabled }).catch(() => {});
+            });
+        });
+    });
+
+    hoverAutoplayToggle.addEventListener('change', (e) => {
+        const isEnabled = e.target.checked;
+        chrome.storage.sync.set({ hoverAutoplayEnabled: isEnabled });
+        chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
+            tabs.forEach(tab => {
+                chrome.tabs.sendMessage(tab.id, { action: 'toggleHoverAutoplay', enabled: isEnabled }).catch(() => {});
             });
         });
     });
