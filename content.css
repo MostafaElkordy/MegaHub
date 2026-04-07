@@ -477,7 +477,10 @@
     bottom: 0;
     left: 0;
     width: 100%;
-    height: 44px;
+    height: auto;
+    /* Dynamic height and container reference */
+    container-type: inline-size;
+    container-name: mh-controls;
     z-index: var(--mh-z-controls);
     display: flex;
     flex-direction: column;
@@ -515,8 +518,10 @@ html.mh-persistent-controls .megahub-video-controls {
     position: relative;
     display: flex;
     align-items: center;
-    padding: 8px 10px;
-    gap: 6px;
+    /* Redefined for a slimmer, more refined profile */
+    height: clamp(24px, 9cqi, 40px);
+    padding: 0 1.5cqi;
+    gap: 1.2cqi;
     width: 100%;
     box-sizing: border-box;
     pointer-events: none;
@@ -549,11 +554,12 @@ html.mh-persistent-controls .megahub-video-controls {
 }
 
 .megahub-vc-btn svg {
-    width: 19px;
-    height: 19px;
+    /* Refined icon sizes for a less bulky appearance */
+    width: clamp(10px, 5cqi, 17px);
+    height: clamp(10px, 5cqi, 17px);
     fill: none;
     stroke: currentColor;
-    stroke-width: 2;
+    stroke-width: 2.3;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
@@ -566,23 +572,33 @@ html.mh-persistent-controls .megahub-video-controls {
 
 .megahub-vc-time {
     color: white;
-    font-size: 10.5px;
+    /* Scaled down font for a sleeker look */
+    font-size: clamp(7px, 3.2cqi, 11px);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-weight: 600;
-    min-width: 60px;
+    min-width: 0;
     text-align: center;
-    letter-spacing: 0.3px;
+    /* Adjusted spacing for smaller font */
+    letter-spacing: 0.1cqi;
     flex-shrink: 0;
+    transition: opacity 0.2s;
+}
+
+/* Hide time ONLY on extremely narrow containers to prioritize the progress bar */
+@container mh-controls (max-width: 200px) {
+    .megahub-vc-time {
+        display: none !important;
+    }
 }
 
 .megahub-vc-progress-wrap {
     flex: 1 1 auto;
-    /* Allow it to grow dynamically, very helpful for Reels */
+    /* Percentage-based flexibility without hard floors */
     height: 24px;
     display: flex;
     align-items: center;
     cursor: pointer;
-    min-width: 50px;
+    min-width: 5cqi;
     pointer-events: auto;
     /* Catch clicks */
 }
@@ -614,11 +630,11 @@ html.mh-persistent-controls .megahub-video-controls {
     display: flex;
     align-items: center;
     gap: 0;
-    padding: 2px;
+    /* Flexible padding to handle micro-scaling */
+    padding: 0.5cqi;
     user-select: none;
     position: relative;
     pointer-events: auto;
-    /* Catch clicks */
 }
 
 .megahub-vc-speed-nav {
@@ -626,7 +642,8 @@ html.mh-persistent-controls .megahub-video-controls {
     border: none;
     color: white;
     cursor: pointer;
-    padding: 2px;
+    /* Proportionally scaled padding */
+    padding: 0.5cqi;
     display: flex;
     align-items: center;
     opacity: 0.7;
@@ -639,8 +656,9 @@ html.mh-persistent-controls .megahub-video-controls {
 }
 
 .megahub-vc-speed-nav svg {
-    width: 13px;
-    height: 13px;
+    /* Speed icons slimmed down proportionally */
+    width: clamp(7px, 3.2cqi, 11px);
+    height: clamp(7px, 3.2cqi, 11px);
     fill: none;
     stroke: currentColor;
     stroke-width: 2.5;
@@ -652,18 +670,18 @@ html.mh-persistent-controls .megahub-video-controls {
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     color: white;
-    font-size: 9px;
+    /* Smaller speed circle to match new bar profile */
+    font-size: clamp(6px, 2.5cqi, 10px);
     font-weight: 500;
-    width: 22px;
-    height: 22px;
+    width: clamp(8.5px, 5.5cqi, 18px);
+    height: clamp(8.5px, 5.5cqi, 18px);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
     margin: 0;
-    padding: 0 0 1px 0;
-    /* optical center fix */
+    padding: 0;
     box-sizing: border-box;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
     letter-spacing: -0.5px;
@@ -851,4 +869,281 @@ html[data-megahub-vc="true"] *:has(> * > svg[aria-label*="صوت" i]) {
     background: transparent !important;
     background-color: transparent !important;
     box-shadow: none !important;
+}
+
+/* ============================================================ */
+/* Fullscreen Navigation Arrows                                 */
+/* ============================================================ */
+
+.megahub-fs-nav-btn {
+    display: none;
+    /* Hidden by default */
+    position: absolute;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    /* Instagram native size */
+    height: 44px;
+    background: rgba(255, 255, 255, 1);
+    border-radius: 50%;
+    color: #262626;
+    /* Instagram native icon color */
+    cursor: pointer;
+    z-index: 999999;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.2s ease-in-out;
+    border: none;
+}
+
+.megahub-fs-nav-btn:hover {
+    background: rgba(220, 220, 220, 1);
+    transform: scale(1.05);
+}
+
+.megahub-fs-nav-btn svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Only block is active when parent container is in HTML5 fullscreen */
+/* And visibility is governed by the global Options setting */
+:fullscreen .megahub-fs-nav-btn {
+    display: flex;
+}
+
+html[data-mh-fs-nav="disabled"] .megahub-fs-nav-btn {
+    display: none !important;
+}
+
+html[data-mh-fs-nav="vertical"] .megahub-fs-nav-horizontal {
+    display: none !important;
+}
+
+html[data-mh-fs-nav="horizontal"] .megahub-fs-nav-vertical {
+    display: none !important;
+}
+
+/* Vertical Positioning - Instagram Reels Style (Stacked closely) */
+.megahub-fs-nav-up {
+    top: calc(50% - 30px);
+    right: 32px;
+}
+
+.megahub-fs-nav-down {
+    top: calc(50% + 30px);
+    right: 32px;
+}
+
+/* Horizontal Positioning */
+.megahub-fs-nav-left {
+    top: 50%;
+    left: 40px;
+    transform: translateY(-50%);
+}
+
+.megahub-fs-nav-left:hover {
+    transform: translateY(-50%) scale(1.05);
+}
+
+.megahub-fs-nav-right {
+    top: 50%;
+    right: 40px;
+    transform: translateY(-50%);
+}
+
+.megahub-fs-nav-right:hover {
+    transform: translateY(-50%) scale(1.05);
+}
+
+/* ============================================================ */
+/* Fullscreen Sterilization                                     */
+/* ============================================================ */
+/* When an element enters Fullscreen, Instagram's native overlay elements 
+   (like the giant center play button) can mis-scale or distort. 
+   We obliterate ALL sibling elements of the video inside the fullscreen container 
+   except our custom UI controls to ensure a perfectly clean player. */
+:fullscreen:not(#megahub-theater):not(html)>*:not(video):not(.megahub-video-controls):not(.megahub-proxy-tag):not(.megahub-fs-nav-btn) {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+}
+
+/* ============================================================ */
+/* Theater Mode (Plan D) — Dialog-based Fullscreen              */
+/* ============================================================ */
+
+#megahub-theater {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 2147483647;
+    border: none;
+    padding: 0;
+    margin: 0;
+    max-width: 100vw;
+    max-height: 100vh;
+    width: 100vw;
+    height: 100vh;
+    background: black;
+    overflow: hidden;
+    outline: none;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Clean theater wrapper — video goes directly inside, no IG containers */
+.mh-theater-wrapper {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+#megahub-theater video {
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    position: relative !important;
+    z-index: 2 !important;
+    margin: auto !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    transform: none !important;
+    cursor: pointer !important;
+}
+
+.mh-temp-snapshot {
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    position: absolute !important;
+    z-index: 3 !important;
+    /* Above video but below UI controls */
+    margin: auto !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+}
+
+/* Show navigation arrows in theater mode */
+#megahub-theater .megahub-fs-nav-btn {
+    display: flex;
+}
+
+/* Ensure IG overlays don't block interaction in theater */
+#megahub-theater>*>*:not(video):not(.megahub-video-controls):not(.megahub-proxy-tag):not(.megahub-fs-nav-btn):not(.mh-theater-action-bar):not(.mh-action-btn) {
+    pointer-events: none !important;
+}
+
+/* Elevate ANY Instagram Native popup (like Save to Collection or Modals) above theater */
+body>[role="presentation"],
+body>[role="dialog"],
+body>.IG_TOASTS_OR_DIALOGS {
+    z-index: 2147483647 !important;
+}
+
+#megahub-theater .megahub-video-controls {
+    display: flex !important;
+    z-index: 10;
+}
+
+/* ============================================================ */
+/* Theater Action Toolbar (Like, Save, Download)                */
+/* ============================================================ */
+
+.mh-theater-action-bar {
+    position: absolute;
+    right: 34px;
+    /* Center-aligned exactly with the 48px navigation arrows (which use right: 32px) */
+    bottom: 12vh;
+    /* Lowered for comfortable spacing from navigation buttons */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    z-index: 25;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Bind visibility to mouse movement via wrapper hover */
+.mh-theater-wrapper:hover .mh-theater-action-bar {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Global idle timer overrides hover to vanish toolbar when inactive */
+#megahub-theater.mh-mouse-idle .mh-theater-action-bar {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+.mh-action-btn {
+    width: 44px;
+    height: 44px;
+    background: white;
+    border: none;
+    border-radius: 50%;
+    color: #262626;
+    /* Match Instagram icon color */
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease, color 0.2s ease;
+    padding: 0;
+    opacity: 1;
+}
+
+.mh-action-btn svg {
+    pointer-events: none;
+    transition: fill 0.2s ease, transform 0.1s ease;
+}
+
+.mh-action-btn:hover {
+    background: rgba(220, 220, 220, 1);
+    transform: scale(1.05);
+}
+
+.mh-action-btn:active {
+    opacity: 0.4;
+    transform: scale(0.95);
+}
+
+/* Active states (e.g. Liked is red, Saved is solid white) */
+.mh-action-btn.mh-like-btn.mh-active {
+    color: #ff3040;
+}
+
+.mh-action-btn.mh-like-btn.mh-active svg {
+    fill: #ff3040;
+    transform: scale(1.1);
+}
+
+.mh-action-btn.mh-save-btn.mh-active {
+    color: currentColor;
+}
+
+.mh-action-btn.mh-save-btn.mh-active svg {
+    fill: currentColor;
+    transform: scale(1.1);
 }

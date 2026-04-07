@@ -28,6 +28,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const persistentControlsToggle = document.getElementById('opt-persistent-controls');
     const persistentControlsRow = document.getElementById('persistent-controls-row');
+    const fullscreenNavSelect = document.getElementById('opt-fullscreen-nav');
+    const fullscreenNavRow = document.getElementById('fullscreen-nav-row');
+    const fullscreenToolbarToggle = document.getElementById('opt-show-fullscreen-toolbar');
+    const fullscreenToolbarRow = document.getElementById('fullscreen-toolbar-row');
 
     const gpuAccelerationToggle = document.getElementById('opt-gpu-acceleration-toggle');
     const carouselNamingSelect = document.getElementById('opt-carousel-naming');
@@ -40,8 +44,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         theme: systemTheme,
         buttonStyle: 'inline',
         videoControlsEnabled: false,
-        videoControlsGradientHeight: 75, /* Default requested by user */
+        videoControlsGradientHeight: 75,
         videoControlsPersistent: false,
+        fullscreenNavStyle: 'vertical',
+        showFullscreenToolbar: true,
         gpuAccelerationEnabled: false,
         carouselNamingFormat: 'real_id',
         customCarouselSuffix: 'slide'
@@ -50,10 +56,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         buttonStyleSelect.value = res.buttonStyle;
         videoControlsToggle.checked = res.videoControlsEnabled;
         persistentControlsToggle.checked = res.videoControlsPersistent;
+        fullscreenNavSelect.value = res.fullscreenNavStyle;
+        fullscreenToolbarToggle.checked = res.showFullscreenToolbar;
         optGradientSlider.value = res.videoControlsGradientHeight;
         gradientValDisplay.textContent = res.videoControlsGradientHeight;
         
-        // Set initial tooltip position without triggering input event
         const initialVal = res.videoControlsGradientHeight;
         const initialPercent = (initialVal - 1) / 149 * 100;
         document.getElementById('slider-tooltip').textContent = initialVal;
@@ -67,6 +74,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (res.videoControlsEnabled) {
             gradientSliderRow.style.display = 'flex';
             persistentControlsRow.style.display = 'flex';
+            fullscreenNavRow.style.display = 'flex';
+            fullscreenToolbarRow.style.display = 'flex';
         }
 
         if (res.carouselNamingFormat === 'custom') {
@@ -88,9 +97,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const isEnabled = e.target.checked;
         chrome.storage.sync.set({ videoControlsEnabled: isEnabled });
         
-        // Toggle the sub-setting rows
         gradientSliderRow.style.display = isEnabled ? 'flex' : 'none';
         persistentControlsRow.style.display = isEnabled ? 'flex' : 'none';
+        fullscreenNavRow.style.display = isEnabled ? 'flex' : 'none';
+        fullscreenToolbarRow.style.display = isEnabled ? 'flex' : 'none';
 
         chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
             tabs.forEach(tab => {
@@ -103,13 +113,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const val = e.target.value;
         gradientValDisplay.textContent = val;
         
-        // Update slider tooltip
         const tooltip = document.getElementById('slider-tooltip');
         tooltip.textContent = val;
         const percent = (val - 1) / 149 * 100;
         tooltip.style.left = `calc(${percent}% + (${8 - percent * 0.16}px))`;
 
-        // Realtime Chrome sync to Instagram tabs while sliding
         chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
             tabs.forEach(tab => {
                 chrome.tabs.sendMessage(tab.id, { action: 'updateGradientHeight', height: parseInt(val, 10) }).catch(() => {});
@@ -118,12 +126,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     optGradientSlider.addEventListener('change', (e) => {
-        // Save to storage ONLY on change to avoid hitting write limits
         const val = parseInt(e.target.value, 10);
         chrome.storage.sync.set({ videoControlsGradientHeight: val });
     });
 
-    // Make scale numbers clickable
     document.querySelectorAll('.slider-scale span').forEach(span => {
         span.addEventListener('click', (e) => {
             const val = e.target.getAttribute('data-val');
@@ -139,6 +145,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
             tabs.forEach(tab => {
                 chrome.tabs.sendMessage(tab.id, { action: 'togglePersistentControls', enabled: isEnabled }).catch(() => {});
+            });
+        });
+    });
+
+    fullscreenNavSelect.addEventListener('change', (e) => {
+        const style = e.target.value;
+        chrome.storage.sync.set({ fullscreenNavStyle: style });
+        chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
+            tabs.forEach(tab => {
+                chrome.tabs.sendMessage(tab.id, { action: 'updateFullscreenNavStyle', style: style }).catch(() => {});
+            });
+        });
+    });
+
+    fullscreenToolbarToggle.addEventListener('change', (e) => {
+        const isEnabled = e.target.checked;
+        chrome.storage.sync.set({ showFullscreenToolbar: isEnabled });
+        chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
+            tabs.forEach(tab => {
+                chrome.tabs.sendMessage(tab.id, { action: 'updateFullscreenToolbar', enabled: isEnabled }).catch(() => {});
             });
         });
     });

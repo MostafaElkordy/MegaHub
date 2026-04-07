@@ -178,12 +178,14 @@ let _videoControlsEnabled = false;
 let _gpuAccelerationEnabled = false;
 let _videoControlsGradientHeight = 75;
 let _videoControlsPersistent = false;
+let _fullscreenNavStyle = 'vertical';
+let _showFullscreenToolbar = true;
 
 // ============================================================
 // Main Entry: Inject download buttons on all supported pages
 // ============================================================
 async function injectButtons() {
-    let settings = { buttonStyle: 'inline', videoControlsEnabled: false, gpuAccelerationEnabled: false, videoControlsGradientHeight: 75, videoControlsPersistent: false };
+    let settings = { buttonStyle: 'inline', videoControlsEnabled: false, gpuAccelerationEnabled: false, videoControlsGradientHeight: 75, videoControlsPersistent: false, fullscreenNavStyle: 'vertical', showFullscreenToolbar: true };
     try {
         settings = await chrome.storage.sync.get(settings);
     } catch (e) {
@@ -195,6 +197,8 @@ async function injectButtons() {
     _gpuAccelerationEnabled = settings.gpuAccelerationEnabled;
     _videoControlsGradientHeight = settings.videoControlsGradientHeight;
     _videoControlsPersistent = settings.videoControlsPersistent;
+    _fullscreenNavStyle = settings.fullscreenNavStyle;
+    _showFullscreenToolbar = settings.showFullscreenToolbar;
 
     // Call all — each function checks _currentButtonStyle and skips if not its mode
     injectFeedButtons();
@@ -216,6 +220,9 @@ async function injectButtons() {
 
     // Toggle persistent video controls global class
     document.documentElement.classList.toggle('mh-persistent-controls', _videoControlsPersistent);
+
+    // Set correct fullscreen navigation style for CSS logic
+    document.documentElement.setAttribute('data-mh-fs-nav', _fullscreenNavStyle);
 }
 
 // Handle messages from popup
@@ -237,6 +244,13 @@ chrome.runtime.onMessage.addListener((request) => {
     } else if (request.action === 'togglePersistentControls') {
         _videoControlsPersistent = request.enabled;
         document.documentElement.classList.toggle('mh-persistent-controls', _videoControlsPersistent);
+    } else if (request.action === 'updateFullscreenNavStyle') {
+        _fullscreenNavStyle = request.style;
+        document.documentElement.setAttribute('data-mh-fs-nav', _fullscreenNavStyle);
+    } else if (request.action === 'updateFullscreenToolbar') {
+        _showFullscreenToolbar = request.enabled;
+        const theaterSidebar = document.querySelector('.mh-theater-action-bar');
+        if (!_showFullscreenToolbar && theaterSidebar) theaterSidebar.remove();
     } else if (request.action === 'switchButtonStyle') {
         // Remove ALL injected download buttons across the page
         document.querySelectorAll('.ig-dl-btn.single-dl').forEach(el => el.remove());
@@ -826,7 +840,7 @@ async function _downloadViaBlobTarget(url, username, type, meta = {}) {
                 }
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const blob = await readResponseWithProgress(response, progress);
-                
+
                 // Validate final blob size/type to prevent saving corrupted 1KB files
                 if (blob.size < 1000 || (blob.type && blob.type.includes('text/'))) {
                     throw new Error('Media URL expired or invalid. Please refresh the page.');
@@ -1091,7 +1105,7 @@ function injectReelsSidebarButton() {
         // Create the sidebar download button
         const dlBtn = document.createElement('div');
         dlBtn.className = 'megahub-reel-sidebar-btn';
-        
+
         // Insert at the bottom, outside the Instagram hover bounding box
         const targetParent = actionColumn.parentElement;
         if (!targetParent) return;
@@ -1703,8 +1717,26 @@ function injectVideoControls() {
         row.className = 'megahub-vc-row';
         row.append(playBtn, timeInd, progressWrap, speedGroup, snapBtn, fsBtn, muteBtn);
 
+        // Optional Fullscreen Visual Navigation Arrows
+        const fsNavUp = document.createElement('div');
+        fsNavUp.className = 'megahub-fs-nav-btn megahub-fs-nav-up megahub-fs-nav-vertical';
+        fsNavUp.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"></polyline></svg>`;
+        const fsNavDown = document.createElement('div');
+        fsNavDown.className = 'megahub-fs-nav-btn megahub-fs-nav-down megahub-fs-nav-vertical';
+        fsNavDown.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+
+        const fsNavLeft = document.createElement('div');
+        fsNavLeft.className = 'megahub-fs-nav-btn megahub-fs-nav-left megahub-fs-nav-horizontal';
+        fsNavLeft.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>`;
+        const fsNavRight = document.createElement('div');
+        fsNavRight.className = 'megahub-fs-nav-btn megahub-fs-nav-right megahub-fs-nav-horizontal';
+        fsNavRight.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+
+        [fsNavUp, fsNavLeft].forEach(el => el.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); mhNavigateFullscreen(-1); }));
+        [fsNavDown, fsNavRight].forEach(el => el.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); mhNavigateFullscreen(1); }));
+
         controlsWrap.append(gradient, row);
-        container.appendChild(controlsWrap);
+        container.append(controlsWrap, fsNavUp, fsNavDown, fsNavLeft, fsNavRight);
 
         // --- Global Mute State Sync ---
         // Instead of fighting IG's React state with localStorage, we will proxy clicks
@@ -1908,7 +1940,7 @@ function injectVideoControls() {
             }
 
             // Update Fullscreen SVG Toggle
-            const currentFs = !!document.fullscreenElement;
+            const currentFs = !!document.fullscreenElement || (typeof _theaterState !== 'undefined' && _theaterState.active);
             if (currentFs !== _lastFsState) {
                 _lastFsState = currentFs;
                 if (currentFs) {
@@ -1959,6 +1991,14 @@ function injectVideoControls() {
         muteBtn.addEventListener('pointerdown', (e) => {
             e.preventDefault(); e.stopPropagation();
 
+            // In theater mode, native IG audio button is inaccessible — use direct mute
+            if (typeof _theaterState !== 'undefined' && _theaterState.active) {
+                video.muted = !video.muted;
+                _theaterState.muted = video.muted;
+                updateUI();
+                return;
+            }
+
             // If we found Instagram's exact native audio wrapper, dispatch a real click event
             // React synthesizes events, sometimes primitive .click() fails on divs, but MouseEvent always bubbles nicely
             if (nativeAudioNode) {
@@ -1978,11 +2018,12 @@ function injectVideoControls() {
 
         fsBtn.addEventListener('pointerdown', (e) => {
             e.preventDefault(); e.stopPropagation();
-            if (document.fullscreenElement) {
-                document.exitFullscreen();
+            if (typeof _theaterState !== 'undefined' && _theaterState.active) {
+                mhExitTheater();
             } else {
-                container.requestFullscreen();
+                mhEnterTheater(video);
             }
+            updateUI();
         });
 
         function updateSpeed(deltaOrVal, isDelta = true) {
@@ -2094,7 +2135,7 @@ function injectVideoControls() {
         // Click directly on the video should toggle play/pause ONLY in fullscreen mode
         // (because when not in fullscreen, Instagram's native invisible overlay handles it)
         video.addEventListener('click', (e) => {
-            if (document.fullscreenElement) {
+            if (document.fullscreenElement || (typeof _theaterState !== 'undefined' && _theaterState.active)) {
                 e.preventDefault();
                 e.stopPropagation();
                 if (video.paused) video.play();
@@ -2135,3 +2176,533 @@ function injectVideoControls() {
 setInterval(() => {
     document.documentElement.classList.toggle('mh-is-reels', window.location.pathname.includes('/reels/'));
 }, 1000);
+
+// ============================================================
+// Theater Mode (Plan D) — Fullscreen Overlay
+// ============================================================
+const _theaterDialog = (() => {
+    const d = document.createElement('div');
+    d.id = 'megahub-theater';
+    document.body.appendChild(d);
+    return d;
+})();
+
+const _theaterState = {
+    active: false,
+    video: null,
+    container: null,
+    originalParent: null,
+    originalNextSibling: null,
+    muted: true,
+};
+
+// Auto-hide toolbar and controls when mouse is idle in Theater mode
+let _mhTheaterIdleTimeout = null;
+_theaterDialog.addEventListener('mousemove', () => {
+    if (!_theaterState.active) return;
+    _theaterDialog.classList.remove('mh-mouse-idle');
+    clearTimeout(_mhTheaterIdleTimeout);
+    _mhTheaterIdleTimeout = setTimeout(() => {
+        if (_theaterState.active) {
+            _theaterDialog.classList.add('mh-mouse-idle');
+        }
+    }, 2500); // Hide after 2.5 seconds of no movement
+});
+
+function mhEnterTheater(video) {
+    const container = video.parentElement;
+    if (!container) return;
+    _theaterState.active = true;
+    _theaterState.muted = video.muted;
+    _theaterDialog.innerHTML = '';
+    _theaterDialog.style.display = 'flex';
+    mhLoadIntoTheater(video, false);
+    _theaterDialog.requestFullscreen().catch(() => { });
+}
+
+function _getNativeIgActionBtn(container, actionType) {
+    const svgs = container.querySelectorAll('svg');
+    for (const svg of svgs) {
+        const path = svg.querySelector('path, polygon');
+        if (!path) continue;
+        const shapeString = path.getAttribute('d') || path.getAttribute('points') || '';
+        const isRed = window.getComputedStyle(svg).color === 'rgb(255, 48, 64)' || svg.getAttribute('fill') === '#ff3040';
+
+        if (actionType === 'like' && (shapeString.includes('16.792') || shapeString.includes('3.46') || isRed)) {
+            return { btn: svg.closest('button, [role="button"]') || svg, isActive: isRed };
+        }
+        if (actionType === 'save' && (shapeString.includes('20 21 12 13.44') || shapeString.includes('15.827'))) {
+            // Instagram uses fill="currentColor" on the polygon or SVG when saved, or changes to a path
+            const isSaved = path.getAttribute('fill') === 'currentColor' || svg.getAttribute('fill') === 'black' || svg.getAttribute('fill') === 'currentColor';
+            return { btn: svg.closest('button, [role="button"]') || svg, isActive: isSaved };
+        }
+    }
+    return null;
+}
+
+function _injectActionToolbar(wrapper, video, igParent) {
+    try {
+        if (!_showFullscreenToolbar) return;
+        
+        if (wrapper.querySelector('.mh-theater-action-bar')) return;
+
+        const bar = document.createElement('div');
+        bar.className = 'mh-theater-action-bar';
+
+        const likeBtn = document.createElement('button');
+        likeBtn.className = 'mh-action-btn mh-like-btn';
+        likeBtn.innerHTML = `<svg class="x1lliihq x1n2onr6 x1vvkbs" fill="currentColor" height="24" role="img" viewBox="0 0 24 24" width="24"><path d="M16.792 3.904A4.989 4.989 0 0 1 21.5 9.122c0 3.072-2.652 4.959-5.197 7.222-2.512 2.243-3.865 3.469-4.303 3.752-.477-.309-2.143-1.823-4.303-3.752C5.141 14.072 2.5 12.167 2.5 9.122a4.989 4.989 0 0 1 4.708-5.218 4.21 4.21 0 0 1 3.675 1.941c.84 1.174 2.504 1.172 3.338-.004a4.128 4.128 0 0 1 2.571-1.937Z"></path></svg>`;
+        
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'mh-action-btn mh-save-btn';
+        saveBtn.innerHTML = `<svg class="x1lliihq x1n2onr6 x1vvkbs" fill="currentColor" height="24" role="img" viewBox="0 0 24 24" width="24"><polygon fill="none" points="20 21 12 13.44 4 21 4 3 20 3 20 21" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></polygon></svg>`;
+
+        const dlBtn = document.createElement('button');
+        dlBtn.className = 'mh-action-btn mh-dl-btn';
+        dlBtn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
+
+        likeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const container = igParent.closest('article, [role="dialog"], [role="presentation"]') || document.body;
+            const nativeLike = _getNativeIgActionBtn(container, 'like');
+            if (nativeLike && nativeLike.btn) nativeLike.btn.click();
+        });
+
+        saveBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const container = igParent.closest('article, [role="dialog"], [role="presentation"]') || document.body;
+            const nativeSave = _getNativeIgActionBtn(container, 'save');
+            if (nativeSave && nativeSave.btn) nativeSave.btn.click();
+        });
+
+        dlBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const container = igParent.closest('article, [role="dialog"], [role="presentation"]') || document.body;
+            const nativeMhDlBtn = container.querySelector('.megahub-dl-btn, .megahub-overlay-dl, .ig-dl-btn, .megahub-vc-btn-dl');
+            if (nativeMhDlBtn) {
+                nativeMhDlBtn.click();
+            } else {
+                console.warn("MegaHub: Native download button not found");
+            }
+        });
+
+        bar.appendChild(likeBtn);
+        bar.appendChild(saveBtn);
+        bar.appendChild(dlBtn);
+        wrapper.appendChild(bar);
+
+        // State polling to visually sync MegaHub buttons with Instagram native buttons 
+        // (handles double-click likes, initial state, and unliking perfectly without languages)
+        const syncInterval = setInterval(() => {
+            if (!document.contains(bar)) return clearInterval(syncInterval);
+            const container = igParent.closest('article, [role="dialog"], [role="presentation"]') || document.body;
+            
+            const nativeLike = _getNativeIgActionBtn(container, 'like');
+            const nativeSave = _getNativeIgActionBtn(container, 'save');
+            
+            if (nativeLike) likeBtn.classList.toggle('mh-active', nativeLike.isActive);
+            if (nativeSave) saveBtn.classList.toggle('mh-active', nativeSave.isActive);
+        }, 300);
+    } catch (e) {
+        console.error("MegaHub Toolbar Error:", e);
+    }
+}
+
+function mhLoadIntoTheater(video, autoplay) {
+    const igParent = video.parentElement;
+    if (!igParent) return;
+    _theaterState.video = video;
+    _theaterState.igParent = igParent;           // IG's original parent of the video
+    _theaterState.igNextSibling = video.nextElementSibling;  // Position within IG parent
+    _theaterState.originalParent = igParent.parentElement;    // IG parent's own parent
+    _theaterState.originalNextSibling = igParent.nextElementSibling;
+    const savedTime = video.currentTime;
+    const wasPaused = video.paused;
+
+    // Move ONLY the video element into a clean wrapper — no IG container cruft.
+    // This avoids IG's nested divs with fixed popup dimensions causing zoom/flash.
+    let wrapper = _theaterDialog.querySelector('.mh-theater-wrapper');
+    if (!wrapper) {
+        wrapper = document.createElement('div');
+        wrapper.className = 'mh-theater-wrapper';
+    }
+    wrapper.appendChild(video);
+
+    // Move UI controls to the theater wrapper
+    [
+        '.megahub-video-controls',
+        '.megahub-fs-nav-up',
+        '.megahub-fs-nav-down',
+        '.megahub-fs-nav-left',
+        '.megahub-fs-nav-right',
+        '.megahub-proxy-tag'
+    ].forEach(selector => {
+        const el = igParent.querySelector(selector);
+        if (el) wrapper.appendChild(el);
+    });
+
+    _injectActionToolbar(wrapper, video, igParent);
+
+    _theaterDialog.appendChild(wrapper);
+
+    video.currentTime = savedTime;
+    video.muted = _theaterState.muted;
+    if (autoplay || !wasPaused) video.play();
+}
+
+function mhReturnFromTheater() {
+    const { igParent, igNextSibling, video } = _theaterState;
+    if (!igParent || !igParent.isConnected) return;
+    const savedTime = video ? video.currentTime : 0;
+    // Always pause before returning to prevent ghost audio in Reels
+    if (video) video.pause();
+
+    // Return the video element back to its original IG parent
+    if (igNextSibling && igNextSibling.parentElement === igParent) {
+        igParent.insertBefore(video, igNextSibling);
+    } else {
+        igParent.appendChild(video);
+    }
+
+    // Return UI controls back to IG DOM and clean up wrapper
+    const wrapper = _theaterDialog.querySelector('.mh-theater-wrapper');
+    if (wrapper) {
+        [
+            '.megahub-video-controls',
+            '.megahub-fs-nav-up',
+            '.megahub-fs-nav-down',
+            '.megahub-fs-nav-left',
+            '.megahub-fs-nav-right',
+            '.megahub-proxy-tag'
+        ].forEach(selector => {
+            const el = wrapper.querySelector(selector);
+            if (el) igParent.appendChild(el);
+        });
+        wrapper.remove();
+    }
+
+    if (video) {
+        video.currentTime = savedTime;
+    }
+}
+
+function mhExitTheater() {
+    if (!_theaterState.active) return;
+    _theaterState.active = false;
+    mhReturnFromTheater();
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
+    _theaterDialog.style.display = 'none';
+    _theaterState.video = null;
+    _theaterState.igParent = null;
+    _theaterState.igNextSibling = null;
+    _theaterState.originalParent = null;
+    _theaterState.originalNextSibling = null;
+}
+
+// Sync: single Escape exits both fullscreen and theater
+document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && _theaterState.active) {
+        mhExitTheater();
+    }
+});
+
+// ============================================================
+// Global Keyboard Shortcuts & Fullscreen Navigation
+// ============================================================
+document.addEventListener('keydown', (e) => {
+    if (!_videoControlsEnabled) return;
+
+    // Ignore input if user is actively typing in a comment box or search bar
+    const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+    const isEditable = document.activeElement ? document.activeElement.isContentEditable : false;
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || isEditable) return;
+
+    // Helper to find the video taking the most screen real estate
+    const getActiveVideo = () => {
+        if (_theaterState && _theaterState.active && _theaterState.video) {
+            return _theaterState.video;
+        }
+        if (document.fullscreenElement) {
+            return document.fullscreenElement.querySelector('video');
+        }
+        let best = null;
+        let maxInt = 0;
+        const vids = document.querySelectorAll('video');
+        const h = window.innerHeight;
+        vids.forEach(v => {
+            const r = v.getBoundingClientRect();
+            const visH = Math.max(0, Math.min(r.bottom, h) - Math.max(r.top, 0));
+            // Minimum threshold of 100px visible height to consider it "on screen"
+            if (visH > 100 && visH > maxInt) {
+                maxInt = visH;
+                best = v;
+            }
+        });
+        return best;
+    };
+
+    const video = getActiveVideo();
+    if (!video) return;
+
+    if (e.code === 'Space') {
+        e.preventDefault(); // Stop page scrolling natively
+        if (video.paused) video.play();
+        else video.pause();
+    } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        video.currentTime = Math.min(video.duration, video.currentTime + 5);
+    } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        video.currentTime = Math.max(0, video.currentTime - 5);
+    } else if ((e.code === 'ArrowUp' || e.code === 'ArrowDown') && _theaterState && _theaterState.active) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Cross-post Fullscreen Navigation (-1 for UP/Previous, 1 for DOWN/Next)
+        mhNavigateFullscreen(e.code === 'ArrowUp' ? -1 : 1);
+    }
+}, { capture: true }); // Capture early to preempt IG native shortcuts gracefully
+
+// Mouse Wheel Navigation for Theater Mode
+let _mhWheelDebounce = false;
+document.addEventListener('wheel', (e) => {
+    if (!_theaterState || !_theaterState.active || _mhWheelDebounce) return;
+    
+    // Determine direction strictly from vertical delta
+    if (Math.abs(e.deltaY) < 10) return; // Ignore micro-scrolls
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    _mhWheelDebounce = true;
+    const direction = e.deltaY > 0 ? 1 : -1;
+    mhNavigateFullscreen(direction);
+    
+    // 500ms throttle matches native Instagram's scroll cooldown for reels
+    setTimeout(() => {
+        _mhWheelDebounce = false;
+    }, 500);
+}, { passive: false, capture: true });
+
+function mhNavigateFullscreen(directionStep) {
+    if (!_theaterState.active || !_theaterState.video) return;
+
+    const currentVideo = _theaterState.video;
+
+    // === Popup/Modal navigation (profile reels) ===
+    const igNavBtn = _findIgNavButton(directionStep);
+    if (igNavBtn) {
+        // Save references before returning
+        const oldIgParent = _theaterState.igParent;
+        const oldIgNextSibling = _theaterState.igNextSibling;
+        const oldSrc = currentVideo.currentSrc;
+
+        // --- TAKE SNAPSHOT HERE ---
+        let snapshot = null;
+        try {
+            if (currentVideo.videoWidth > 0 && currentVideo.videoHeight > 0) {
+                snapshot = document.createElement('canvas');
+                snapshot.className = 'mh-temp-snapshot';
+                snapshot.width = currentVideo.videoWidth;
+                snapshot.height = currentVideo.videoHeight;
+                snapshot.getContext('2d').drawImage(currentVideo, 0, 0, snapshot.width, snapshot.height);
+            }
+        } catch (e) {
+            console.warn("MegaHub: Canvas snapshot failed", e);
+        }
+
+        // Return JUST the video to IG briefly so IG has DOM context for the click (Leave UI controls floating seamlessly)
+        if (_theaterState.igParent && _theaterState.igParent.isConnected) {
+             if (_theaterState.igNextSibling && _theaterState.igNextSibling.parentElement === _theaterState.igParent) {
+                 _theaterState.igParent.insertBefore(currentVideo, _theaterState.igNextSibling);
+             } else {
+                 _theaterState.igParent.appendChild(currentVideo);
+             }
+        }
+        
+        igNavBtn.click();
+
+        // Immediately put old video BACK in theater wrapper as visual placeholder beneath the persisting controls.
+        let wrapper = _theaterDialog.querySelector('.mh-theater-wrapper');
+        if (!wrapper) {
+            wrapper = document.createElement('div');
+            wrapper.className = 'mh-theater-wrapper';
+            _theaterDialog.appendChild(wrapper);
+        }
+        wrapper.insertBefore(currentVideo, wrapper.firstChild);
+        if (snapshot) wrapper.insertBefore(snapshot, currentVideo.nextSibling);
+
+        // Wait for IG to load the new reel in the background
+        _waitForNewVideo(currentVideo, oldSrc, (newVideo) => {
+            if (snapshot) snapshot.remove(); // Unfreeze visually immediately
+
+            if (!newVideo) {
+                // Timeout — restore old video state correctly to bring back lost controls
+                _theaterState.video = currentVideo;
+                _theaterState.igParent = oldIgParent;
+                _theaterState.igNextSibling = oldIgNextSibling;
+                mhLoadIntoTheater(currentVideo, false);
+                return;
+            }
+
+            if (newVideo !== currentVideo) {
+                // Smooth swap: return OLD controls to OLD IG parent exactly the millisecond before picking up new ones
+                [
+                    '.megahub-video-controls',
+                    '.megahub-fs-nav-up',
+                    '.megahub-fs-nav-down',
+                    '.megahub-fs-nav-left',
+                    '.megahub-fs-nav-right',
+                    '.megahub-proxy-tag'
+                ].forEach(selector => {
+                    const el = wrapper.querySelector(selector);
+                    if (el && oldIgParent) oldIgParent.appendChild(el);
+                });
+                
+                const oldBar = wrapper.querySelector('.mh-theater-action-bar');
+                if (oldBar) oldBar.remove();
+
+                // Safely detach old video from our wrapper
+                currentVideo.remove();
+
+                // Return old video to IG DOM if the parent still exists
+                if (oldIgParent && oldIgParent.isConnected) {
+                    if (oldIgNextSibling && oldIgNextSibling.parentElement === oldIgParent) {
+                        oldIgParent.insertBefore(currentVideo, oldIgNextSibling);
+                    } else {
+                        oldIgParent.appendChild(currentVideo);
+                    }
+                }
+            }
+
+            // Load new video into theater (reuses wrapper, updates state)
+            mhLoadIntoTheater(newVideo, true);
+        });
+        return;
+    }
+
+    // === Feed navigation (Reels page) ===
+    mhReturnFromTheater();
+
+    const allVideos = Array.from(document.querySelectorAll('video')).filter(v => {
+        return v.offsetParent !== null || window.getComputedStyle(v).display !== 'none';
+    });
+
+    const currIdx = allVideos.indexOf(currentVideo);
+    if (currIdx === -1) {
+        mhLoadIntoTheater(currentVideo, false);
+        return;
+    }
+
+    const targetIdx = currIdx + directionStep;
+
+    if (targetIdx >= 0 && targetIdx < allVideos.length) {
+        mhLoadIntoTheater(allVideos[targetIdx], true);
+        return;
+    }
+
+    // Fallback — try scrolling to trigger lazy loading
+    if (directionStep > 0) {
+        let scrollTarget = currentVideo.parentElement;
+        while (scrollTarget && scrollTarget !== document.body) {
+            const s = window.getComputedStyle(scrollTarget);
+            if (s.overflowY === 'auto' || s.overflowY === 'scroll') break;
+            scrollTarget = scrollTarget.parentElement;
+        }
+        if (!scrollTarget || scrollTarget === document.body) scrollTarget = document.scrollingElement;
+        scrollTarget.scrollBy(0, scrollTarget.clientHeight || 1000);
+        setTimeout(() => {
+            const newVideos = Array.from(document.querySelectorAll('video')).filter(v => {
+                return v.offsetParent !== null || window.getComputedStyle(v).display !== 'none';
+            });
+            if (newVideos.length > allVideos.length) {
+                mhLoadIntoTheater(newVideos[allVideos.length], true);
+            } else {
+                mhLoadIntoTheater(currentVideo, false);
+            }
+        }, 500);
+    } else {
+        mhLoadIntoTheater(currentVideo, false);
+    }
+}
+
+// Find IG's native Next/Previous button in the popup/modal view
+function _findIgNavButton(direction) {
+    const isNext = direction > 0;
+
+    // Method 1: aria-label based
+    const ariaLabels = isNext
+        ? ['Next', 'Go to next']
+        : ['Go back', 'Previous'];
+    for (const label of ariaLabels) {
+        const btn = document.querySelector(`[role="button"][aria-label*="${label}" i], button[aria-label*="${label}" i]`);
+        if (btn && btn.offsetParent !== null) return btn;
+    }
+
+    // Method 2: Find edge-positioned chevron button
+    const candidates = document.querySelectorAll('button, [role="button"]');
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    for (const btn of candidates) {
+        if (!btn.querySelector('svg')) continue;
+        if (btn.classList.contains('mh-action-btn') || btn.closest('.mh-theater-action-bar') || btn.classList.contains('megahub-fs-nav-btn')) continue;
+        const rect = btn.getBoundingClientRect();
+        if (rect.width < 10 || rect.height < 10) continue;
+        const centerY = rect.top + rect.height / 2;
+        if (centerY < vh * 0.2 || centerY > vh * 0.8) continue;
+        if (isNext && rect.right > vw - 100 && rect.left > vw * 0.85) return btn;
+        if (!isNext && rect.left < 100 && rect.right < vw * 0.15) return btn;
+    }
+
+    return null;
+}
+
+// Wait for a NEW video element to appear in the DOM
+function _waitForNewVideo(oldVideo, oldSrc, callback, maxWait = 3000) {
+    const start = Date.now();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    const check = () => {
+        // Look for the "new" active video by evaluating its position on screen
+        // Ignores completely hidden or off-screen pre-cached videos
+        let bestNew = null;
+        let maxVisibleArea = -1;
+
+        document.querySelectorAll('video').forEach(v => {
+            if (v === oldVideo && oldVideo.currentSrc === oldSrc) return;
+            if (v.offsetParent === null && window.getComputedStyle(v).display === 'none') return;
+            
+            const r = v.getBoundingClientRect();
+            // Calculate actual visible area intersecting the viewport
+            const visW = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+            const visH = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+            const visArea = visW * visH;
+
+            // Strict threshold prevents intercepting tiny thumbnails or partially hidden elements
+            if (visArea > 10000 && visArea > maxVisibleArea) {
+                maxVisibleArea = visArea;
+                bestNew = v;
+            }
+        });
+
+        if (bestNew) {
+            callback(bestNew);
+            return;
+        }
+
+        // Check if IG smartly reused the identical element but hot-swapped the source
+        if (oldVideo.isConnected && oldVideo.currentSrc && oldVideo.currentSrc !== oldSrc) {
+            callback(oldVideo);
+            return;
+        }
+
+        if (Date.now() - start < maxWait) {
+            requestAnimationFrame(check);
+        } else {
+            callback(null); // Timeout
+        }
+    };
+
+    requestAnimationFrame(check);
+}
