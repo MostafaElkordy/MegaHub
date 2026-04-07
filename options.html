@@ -21,7 +21,7 @@
             </div>
             <nav class="nav-links">
                 <a href="#general" class="nav-item active" data-tab="general">General</a>
-                <a href="#storage" class="nav-item" data-tab="storage">Smart Storage</a>
+                <a href="#storage" class="nav-item" data-tab="storage">Smart Download</a>
                 <a href="#about" class="nav-item" data-tab="about">About</a>
             </nav>
         </aside>
@@ -134,42 +134,59 @@
 
             <section id="storage" class="tab-pane">
                 <div class="page-header">
-                    <h1>Smart Storage</h1>
+                    <h1>Smart Download</h1>
                     <p>Bypass the typical browser "Downloads" folder and save directly to your organized local archive.
                     </p>
                 </div>
 
                 <div class="card storage-card">
                     <div class="card-header">
-                        <h3>Smart Auto-Routing Saving</h3>
+                        <h3>Smart Auto-Routing Downloading</h3>
                         <label class="switch">
                             <input type="checkbox" id="smart-routing-toggle">
                             <span class="slider round"></span>
                         </label>
                     </div>
-                    <p class="desc">When enabled, downloaded media will be routed natively into categorized sub-folders
-                        (based on the profile name) directly inside your selected Master Folder, entirely bypassing the
-                        Chrome Downloads manager to prevent "Save As" spam.</p>
+                    <p class="desc" style="margin-bottom: 20px;">When enabled, downloaded media will be automatically
+                        organized into sub-folders based on the profile name.</p>
 
-                    <div class="folder-picker-group">
-                        <button id="btn-select-folder" class="btn primary">
+                    <!-- Folder Status -->
+                    <div class="path-picker-section" id="folder-details-section">
+                        <label class="path-label">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
                                 stroke-width="2">
-                                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z">
+                                <path
+                                    d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z">
                                 </path>
                             </svg>
-                            Select Master Folder
-                        </button>
-                        <div class="status-box">
-                            <span id="folder-status" class="status no-folder">No folder selected</span>
-                            <span id="folder-path" class="path-display"></span>
+                            Download Folder
+                        </label>
+                        <div class="browse-row" style="margin-bottom: 12px;">
+                            <div class="folder-status-display">
+                                <span id="folder-status-icon" class="status-dot no-folder"></span>
+                                <span id="folder-status-text" class="folder-name">No folder selected yet</span>
+                            </div>
+                            <button id="btn-change-folder" class="btn secondary" style="margin-left: auto; font-size: 12px; padding: 6px 14px;">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                                    <path d="M3 3v5h5"></path>
+                                </svg>
+                                Reset
+                            </button>
                         </div>
+                        <div class="path-preview-box" id="folder-preview" style="display: none;">
+                            <div class="path-breadcrumb">
+                                <span class="crumb crumb-root" id="folder-name-display">📁 Selected Folder</span>
+                                <span class="crumb-sep">›</span>
+                                <span class="crumb crumb-user">{username}</span>
+                                <span class="crumb-sep">›</span>
+                                <span class="crumb crumb-file">{filename}</span>
+                            </div>
+                        </div>
+                        <p class="desc" style="margin-top: 12px; font-size: 11px; opacity: 0.7;">
+                            💡 The folder is selected on your first download. Click "Change Folder" to pick a different one next time.
+                        </p>
                     </div>
-                    <p class="warning-text" id="permission-warning"
-                        style="display:none; color: #ff6b6b; margin-top: 10px; font-size: 13px;">
-                        ⚠️ Chrome lost permission to access this folder. Please click "Change Folder" and select it
-                        again.
-                    </p>
                 </div>
             </section>
 
@@ -184,7 +201,7 @@
             </section>
         </main>
     </div>
-    <script src="options.js" type="module"></script>
+    <script src="options.js"></script>
 </body>
 
 </html>

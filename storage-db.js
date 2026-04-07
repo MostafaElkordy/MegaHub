@@ -1,40 +1,75 @@
-// storage-db.js
-// Provides a Promise-wrapper for IndexedDB to store FileSystemDirectoryHandle
-const DB_NAME = 'MegaHub_FSDB';
-const STORE_NAME = 'handles';
+// storage-db.js — IndexedDB wrapper for FileSystemDirectoryHandle persistence + temp blob transfer
 
-function getDB() {
+const DB_NAME = 'MegaHubStorage';
+const DB_VERSION = 2;
+const HANDLES_STORE = 'handles';
+const BLOBS_STORE = 'tempBlobs';
+
+function openDB() {
     return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-                db.createObjectStore(STORE_NAME);
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(HANDLES_STORE)) {
+                db.createObjectStore(HANDLES_STORE);
+            }
+            if (!db.objectStoreNames.contains(BLOBS_STORE)) {
+                db.createObjectStore(BLOBS_STORE);
             }
         };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
     });
 }
 
+// --- Directory Handle Storage ---
 export async function saveDirectoryHandle(key, handle) {
-    const db = await getDB();
+    const db = await openDB();
     return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.put(handle, key);
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
+        const tx = db.transaction(HANDLES_STORE, 'readwrite');
+        tx.objectStore(HANDLES_STORE).put(handle, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
     });
 }
 
 export async function getDirectoryHandle(key) {
-    const db = await getDB();
+    const db = await openDB();
     return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.get(key);
-        req.onsuccess = () => resolve(req.result);
+        const tx = db.transaction(HANDLES_STORE, 'readonly');
+        const req = tx.objectStore(HANDLES_STORE).get(key);
+        req.onsuccess = () => resolve(req.result || null);
         req.onerror = () => reject(req.error);
+    });
+}
+
+// --- Temp Blob Transfer (background → offscreen) ---
+export async function saveTempBlob(key, blob) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(BLOBS_STORE, 'readwrite');
+        tx.objectStore(BLOBS_STORE).put(blob, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+export async function getTempBlob(key) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(BLOBS_STORE, 'readonly');
+        const req = tx.objectStore(BLOBS_STORE).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+export async function deleteTempBlob(key) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(BLOBS_STORE, 'readwrite');
+        tx.objectStore(BLOBS_STORE).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
     });
 }

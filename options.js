@@ -1,4 +1,4 @@
-import { saveDirectoryHandle, getDirectoryHandle } from './storage-db.js';
+// options.js — Mega Hub Settings
 
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Tab Switching
@@ -170,67 +170,74 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 3. Smart Storage Logic
     const smartRoutingToggle = document.getElementById('smart-routing-toggle');
-    const btnSelectFolder = document.getElementById('btn-select-folder');
-    const folderStatus = document.getElementById('folder-status');
-    const folderPath = document.getElementById('folder-path');
-    const permissionWarning = document.getElementById('permission-warning');
+    const folderStatusIcon = document.getElementById('folder-status-icon');
+    const folderStatusText = document.getElementById('folder-status-text');
+    const folderPreview = document.getElementById('folder-preview');
+    const folderNameDisplay = document.getElementById('folder-name-display');
+    const btnChangeFolder = document.getElementById('btn-change-folder');
 
-    chrome.storage.sync.get({ smartRoutingEnabled: false }, (res) => {
-        smartRoutingToggle.checked = res.smartRoutingEnabled;
-    });
-
-    smartRoutingToggle.addEventListener('change', (e) => {
-        chrome.storage.sync.set({ smartRoutingEnabled: e.target.checked });
-    });
-
-    async function checkExistingHandle() {
-        try {
-            const handle = await getDirectoryHandle('master_harvest_folder');
-            if (handle) {
-                folderStatus.textContent = 'Linked to Folder:';
-                folderStatus.className = 'status linked';
-                folderPath.textContent = handle.name;
-                btnSelectFolder.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> Change Master Folder`;
-
-                // Verify permissions
-                const permission = await handle.queryPermission({ mode: 'readwrite' });
-                if (permission !== 'granted') {
-                    permissionWarning.style.display = 'block';
-                    folderStatus.className = 'status warning';
-                } else {
-                    permissionWarning.style.display = 'none';
-                }
-            } else {
-                folderStatus.textContent = 'No folder selected';
-                folderStatus.className = 'status no-folder';
-                folderPath.textContent = '';
-            }
-        } catch (e) {
-            console.error("Error reading handle:", e);
+    function showFolderStatus(name) {
+        if (name) {
+            folderStatusIcon.className = 'status-dot linked';
+            folderStatusText.textContent = name;
+            folderPreview.style.display = 'block';
+            folderNameDisplay.textContent = '📁 ' + name;
+        } else {
+            folderStatusIcon.className = 'status-dot no-folder';
+            folderStatusText.textContent = 'No folder selected yet';
+            folderPreview.style.display = 'none';
         }
     }
 
-    await checkExistingHandle();
+    const folderDetailsSection = document.getElementById('folder-details-section');
+    // --- Load stored state ---
+    chrome.storage.sync.get({
+        smartRoutingEnabled: false,
+        smartFolderName: ''
+    }, (res) => {
+        smartRoutingToggle.checked = res.smartRoutingEnabled;
+        folderDetailsSection.style.display = res.smartRoutingEnabled ? 'block' : 'none';
+        showFolderStatus(res.smartFolderName);
+    });
 
-    // 4. File System Access API Prompt
-    btnSelectFolder.addEventListener('click', async () => {
-        try {
-            // Browsers enforce that showDirectoryPicker must be bounded to a transient activation (click)
-            const handle = await window.showDirectoryPicker({
-                id: 'megahub_master',
-                mode: 'readwrite'
+    // --- Toggle ---
+    smartRoutingToggle.addEventListener('change', (e) => {
+        const isEnabled = e.target.checked;
+        chrome.storage.sync.set({ smartRoutingEnabled: isEnabled });
+        folderDetailsSection.style.display = isEnabled ? 'block' : 'none';
+    });
+
+    // --- Change Folder: Clear the stored handle so next download re-prompts ---
+    btnChangeFolder.addEventListener('click', () => {
+        // Tell all Instagram tabs to clear their smart handle
+        chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
+            tabs.forEach(tab => {
+                chrome.tabs.sendMessage(tab.id, { action: 'clear_smart_handle' }).catch(() => {});
             });
+        });
+        // Clear the folder name from storage
+        chrome.storage.sync.remove('smartFolderName');
+        showFolderStatus('');
+        
+        // UX Feedback
+        btnChangeFolder.innerHTML = '✅ Reset! Pick new on next download';
+        btnChangeFolder.disabled = true;
+        setTimeout(() => {
+            btnChangeFolder.innerHTML = `
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                    <path d="M3 3v5h5"></path>
+                </svg>
+                Reset
+            `;
+            btnChangeFolder.disabled = false;
+        }, 3000);
+    });
 
-            await saveDirectoryHandle('master_harvest_folder', handle);
-            chrome.storage.sync.set({ smartRoutingEnabled: true });
-            smartRoutingToggle.checked = true;
-
-            await checkExistingHandle();
-        } catch (err) {
-            if (err.name !== 'AbortError') {
-                console.error('Directory Picker Error:', err);
-                alert("Failed to access folder: " + err.message);
-            }
+    // --- Listen for folder name changes (updated by content script on first download) ---
+    chrome.storage.onChanged.addListener((changes) => {
+        if (changes.smartFolderName) {
+            showFolderStatus(changes.smartFolderName.newValue || '');
         }
     });
 

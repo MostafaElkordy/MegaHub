@@ -8,6 +8,68 @@
 console.log("Mega Hub: Content script loaded");
 
 // ============================================================
+// Smart Download: IndexedDB helpers for File System Access API
+// Stores FileSystemDirectoryHandle in instagram.com's IndexedDB
+// ============================================================
+const _SMART_DB_NAME = 'MegaHubSmartStorage';
+const _SMART_DB_VER = 1;
+
+function _openSmartDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(_SMART_DB_NAME, _SMART_DB_VER);
+        req.onupgradeneeded = () => {
+            if (!req.result.objectStoreNames.contains('handles')) {
+                req.result.createObjectStore('handles');
+            }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function _getSmartHandle() {
+    try {
+        const db = await _openSmartDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('handles', 'readonly');
+            const req = tx.objectStore('handles').get('download_folder');
+            req.onsuccess = () => { db.close(); resolve(req.result || null); };
+            req.onerror = () => { db.close(); reject(req.error); };
+        });
+    } catch (e) { return null; }
+}
+
+async function _saveSmartHandle(handle) {
+    const db = await _openSmartDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('handles', 'readwrite');
+        tx.objectStore('handles').put(handle, 'download_folder');
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+}
+
+async function _clearSmartHandle() {
+    try {
+        const db = await _openSmartDB();
+        return new Promise((resolve) => {
+            const tx = db.transaction('handles', 'readwrite');
+            tx.objectStore('handles').delete('download_folder');
+            tx.oncomplete = () => { db.close(); resolve(); };
+            tx.onerror = () => { db.close(); resolve(); };
+        });
+    } catch (e) { /* ignore */ }
+}
+
+// Listen for messages from Options page (e.g., "Change Folder" button)
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'clear_smart_handle') {
+        _clearSmartHandle().then(() => sendResponse({ done: true }));
+        return true;
+    }
+});
+
+// ============================================================
 // Constants & Templates
 // ============================================================
 const SELECTORS = {
@@ -707,37 +769,103 @@ async function _downloadViaBlobTarget(url, username, type, meta = {}) {
     try {
         const { smartRoutingEnabled } = await chrome.storage.sync.get({ smartRoutingEnabled: false });
 
-        // Phase 1: Smart Harvester File System Bypass
+        // Phase 1: Smart Auto-Routing — File System Access API in content script
+        // Download button click = user gesture → showDirectoryPicker/requestPermission work here
         if (smartRoutingEnabled) {
-            progress.setIndeterminate('Streaming to Master Folder...');
+            const safeFolder = (username || 'Misc').replace(/[<>:"\\|?*]/g, '').trim() || 'Misc';
 
-            // Extract the username/collection name to use as subfolder
-            const folderName = username || 'Misc';
+            try {
+                // 1. Get stored handle or pick folder (first time only)
+                let dirHandle = await _getSmartHandle();
 
-            return new Promise((resolve) => {
-                chrome.runtime.sendMessage({
-                    action: 'offscreen_save_blob',
-                    data: { url, filename, folderName, username }
-                }, (response) => {
-                    if (cancelled) return resolve(false);
+                if (!dirHandle) {
+                    // First download — user picks folder ONCE
+                    progress.setIndeterminate('Select download folder...');
+                    dirHandle = await window.showDirectoryPicker({
+                        id: 'megahub_smart',
+                        mode: 'readwrite'
+                    });
+                    await _saveSmartHandle(dirHandle);
+                    chrome.storage.sync.set({ smartFolderName: dirHandle.name });
+                }
 
-                    if (chrome.runtime.lastError || !response || !response.success) {
-                        const errMsg = response?.error || chrome.runtime.lastError?.message || "Smart Routing Error";
-                        progress.setError(errMsg.length > 30 ? "Check Options for Master Folder" : errMsg);
-                        console.error("MegaHub Smart Routing Error:", errMsg);
-                        setTimeout(() => progress.remove(), 4000);
+                // 2. Verify/re-grant permission (user gesture still valid from click)
+                let perm = await dirHandle.queryPermission({ mode: 'readwrite' });
+                if (perm === 'prompt') {
+                    perm = await dirHandle.requestPermission({ mode: 'readwrite' });
+                }
+                if (perm !== 'granted') {
+                    await _clearSmartHandle();
+                    chrome.storage.sync.remove('smartFolderName');
+                    throw new Error('Folder access denied. Click download again to re-select.');
+                }
 
-                        // Fail silently for mass downloads, or return false to retry locally?
-                        // If Master Folder broke, returning false stops the item from 'succeeding', which is correct.
-                        resolve(false);
-                    } else {
-                        progress.setDone(0);
-                        progress.el.querySelector('.megahub-progress-size').textContent = 'Saved Natively';
-                        setTimeout(() => progress.remove(), 2500);
-                        resolve(true);
+                // 3. Create username subfolder (auto-creates if missing)
+                progress.setIndeterminate('Saving to ' + safeFolder + '/');
+                const userFolder = await dirHandle.getDirectoryHandle(safeFolder, { create: true });
+
+                // 4. Fetch media directly
+                progress.setIndeterminate('Downloading...');
+                let response;
+                try {
+                    response = await fetch(url);
+                    // Reject redirects (often login page) or non-media text HTML responses
+                    if (!response.ok || response.redirected || (response.headers.get('content-type') || '').includes('text/')) {
+                        throw new Error('Retry');
                     }
-                });
-            });
+                } catch (e) {
+                    // If first fetch fails/redirects, retry with credentials included
+                    response = await fetch(url, { credentials: 'include' });
+                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const blob = await readResponseWithProgress(response, progress);
+                
+                // Validate final blob size/type to prevent saving corrupted 1KB files
+                if (blob.size < 1000 || (blob.type && blob.type.includes('text/'))) {
+                    throw new Error('Media URL expired or invalid. Please refresh the page.');
+                }
+
+                // 5. Write file
+                progress.setIndeterminate('Saving...');
+                let safeFilename = filename.replace(/[<>:"\\|?*]/g, '').trim() || 'download';
+                let fileHandle;
+                try {
+                    fileHandle = await userFolder.getFileHandle(safeFilename, { create: true });
+                } catch (_) {
+                    const dot = safeFilename.lastIndexOf('.');
+                    const name = dot > 0 ? safeFilename.substring(0, dot) : safeFilename;
+                    const ext = dot > 0 ? safeFilename.substring(dot) : '';
+                    safeFilename = `${name}_${Date.now()}${ext}`;
+                    fileHandle = await userFolder.getFileHandle(safeFilename, { create: true });
+                }
+
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+
+                progress.setDone(0);
+                progress.el.querySelector('.megahub-progress-size').textContent = `Saved to ${safeFolder}/`;
+                setTimeout(() => progress.remove(), 2500);
+                return true;
+
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    progress.setError('Cancelled');
+                    setTimeout(() => progress.remove(), 1500);
+                    return false;
+                }
+                // If folder was deleted or handle is stale, clear it for next attempt
+                if (err.message?.includes('not found') || err.message?.includes('not access') || err.name === 'NotFoundError') {
+                    await _clearSmartHandle();
+                    chrome.storage.sync.remove('smartFolderName');
+                    progress.remove(); // remove stale toast
+                    return await _downloadViaBlobTarget(url, username, type, meta); // Seamlessly retry and prompt for new folder!
+                }
+                console.error('MegaHub Smart Download Error:', err);
+                progress.setError(err.message?.length > 40 ? 'Save failed — click again' : err.message);
+                setTimeout(() => progress.remove(), 4000);
+                return false;
+            }
         }
 
         // Phase 1 (Original): Fallback to Local Blob Memory Fetch
@@ -769,20 +897,19 @@ async function _downloadViaBlobTarget(url, username, type, meta = {}) {
         // Attempt 3: Background script fetch (has host_permissions)
         if (!blob && !cancelled) {
             progress.setIndeterminate('Trying alternate method...');
-            blob = await new Promise((resolve) => {
+            const bgSuccess = await new Promise((resolve) => {
                 chrome.runtime.sendMessage({ action: 'fetch_blob', url }, (response) => {
-                    if (response && response.success && response.blobUrl) {
-                        triggerDownload(response.blobUrl, filename, true);
+                    if (response && response.success) {
                         progress.setDone(0);
-                        setTimeout(() => progress.remove(), 2000);
-                        resolve(null);
+                        setTimeout(() => progress.remove(), 2500);
+                        resolve(true); // Signifies background handled the download
                     } else {
-                        resolve(null);
+                        resolve(false);
                     }
                 });
-                setTimeout(() => resolve(null), 15000);
+                setTimeout(() => resolve(false), 15000);
             });
-            if (blob === null) return true;
+            if (bgSuccess) return true;
         }
 
         if (cancelled) return false;
@@ -1001,7 +1128,6 @@ function injectSinglePostButtons() {
 // 4. Profile grid (hover overlay with download arrow)
 // ============================================================
 function injectGridButtons() {
-    initGridSelectUI();
     const gridLinks = document.querySelectorAll(SELECTORS.links);
     let hasGridItems = false;
 
@@ -1049,11 +1175,6 @@ function injectGridButtons() {
         link.dataset.megahubGrid = 'true';
     });
 
-    const fabBtn = document.getElementById('megahub-fab-btn');
-    if (fabBtn && !isGridSelectMode) {
-        if (hasGridItems) fabBtn.classList.remove('hidden');
-        else fabBtn.classList.add('hidden');
-    }
 }
 
 // ============================================================
@@ -1121,99 +1242,6 @@ function injectAvatarButton() {
     avatarImg.dataset.megahubAvatar = 'true';
 }
 
-// ============================================================
-// Grid Multi-Select State & UI
-// ============================================================
-let isGridSelectMode = false;
-const selectedGridItems = new Set();
-
-function initGridSelectUI() {
-    if (document.getElementById('megahub-fab-container')) return;
-
-    const container = document.createElement('div');
-    container.id = 'megahub-fab-container';
-    container.innerHTML = `
-        <button id="megahub-fab-btn" class="megahub-fab-btn hidden">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
-            Batch Select
-        </button>
-        <div id="megahub-select-toolbar" class="hidden">
-            <span id="megahub-select-count">0 Selected</span>
-            <button class="megahub-toolbar-dl" id="megahub-toolbar-dl">Download</button>
-            <button class="megahub-toolbar-cancel" id="megahub-toolbar-cancel">Cancel</button>
-        </div>
-    `;
-    document.body.appendChild(container);
-
-    const fabBtn = document.getElementById('megahub-fab-btn');
-    const toolbar = document.getElementById('megahub-select-toolbar');
-    const dlBtn = document.getElementById('megahub-toolbar-dl');
-    const cancelBtn = document.getElementById('megahub-toolbar-cancel');
-
-    fabBtn.addEventListener('click', () => {
-        isGridSelectMode = true;
-        document.body.classList.add('megahub-select-mode');
-        fabBtn.classList.add('hidden');
-        toolbar.classList.remove('hidden');
-        updateGridSelectCount();
-    });
-
-    cancelBtn.addEventListener('click', exitGridSelectMode);
-
-    dlBtn.addEventListener('click', async () => {
-        if (selectedGridItems.size === 0) return;
-        dlBtn.textContent = 'Queueing...';
-        dlBtn.style.opacity = '0.7';
-        dlBtn.style.pointerEvents = 'none';
-
-        const items = Array.from(selectedGridItems);
-        for (const shortcode of items) {
-            const btn = document.querySelector(`.megahub-grid-dl-btn[data-shortcode="${shortcode}"]`);
-            const username = btn ? btn.dataset.username : 'instagram_user';
-
-            const postData = await requestPostData(shortcode);
-            await handlePostDataDownload(postData, username);
-        }
-
-        exitGridSelectMode();
-        dlBtn.textContent = 'Download';
-        dlBtn.style.opacity = '1';
-        dlBtn.style.pointerEvents = 'auto';
-    });
-}
-
-function exitGridSelectMode() {
-    isGridSelectMode = false;
-    document.body.classList.remove('megahub-select-mode');
-    document.getElementById('megahub-select-toolbar').classList.add('hidden');
-    document.getElementById('megahub-fab-btn').classList.remove('hidden'); // It will be properly hidden on next DOM observe if no grid items
-
-    document.querySelectorAll('.megahub-grid-wrapper.megahub-selected').forEach(el => {
-        el.classList.remove('megahub-selected');
-    });
-    selectedGridItems.clear();
-}
-
-function updateGridSelectCount() {
-    const countEl = document.getElementById('megahub-select-count');
-    if (countEl) countEl.textContent = `${selectedGridItems.size} Selected`;
-}
-
-function toggleGridSelection(wrapper) {
-    const btn = wrapper.querySelector('.megahub-grid-dl-btn');
-    if (!btn) return;
-    const shortcode = btn.dataset.shortcode;
-    if (!shortcode) return;
-
-    if (selectedGridItems.has(shortcode)) {
-        selectedGridItems.delete(shortcode);
-        wrapper.classList.remove('megahub-selected');
-    } else {
-        selectedGridItems.add(shortcode);
-        wrapper.classList.add('megahub-selected');
-    }
-    updateGridSelectCount();
-}
 
 // ============================================================
 // High Performance UI Sync Observer
@@ -1257,7 +1285,7 @@ async function handlePostDataDownload(postData, defaultUsername, targetIndex = 0
     };
 
     const targetUser = meta.realUsername || defaultUsername;
-    const { downloadCarouselAll } = await chrome.storage.sync.get({ downloadCarouselAll: true });
+    const { downloadCarouselAll } = await chrome.storage.sync.get({ downloadCarouselAll: false });
 
     if (downloadCarouselAll && postData.allMedia && postData.allMedia.length > 1) {
         let queuedCount = 0;
@@ -1288,20 +1316,6 @@ async function handlePostDataDownload(postData, defaultUsername, targetIndex = 0
 }
 
 document.body.addEventListener('click', async (e) => {
-    // 0. Grid Selection Mode Intercept
-    if (isGridSelectMode) {
-        const gridWrapper = e.target.closest('.megahub-grid-wrapper');
-        const isClickingInsideToolbar = e.target.closest('#megahub-fab-container');
-        if (gridWrapper) {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleGridSelection(gridWrapper);
-            return;
-        } else if (!isClickingInsideToolbar) {
-            // Optional UX: click outside grid while selecting? Ignore.
-        }
-    }
-
     // Traverse up to find if a MegaHub button was clicked
     let btn = e.target.closest(SELECTORS.buttons);
     if (!btn || btn.classList.contains('loading')) return;
@@ -1378,7 +1392,7 @@ document.body.addEventListener('click', async (e) => {
         const directUrl = mediaSection ? getDirectVideoUrl(mediaSection) : null;
 
         // Check user settings for Auto-Download Carousel
-        const { downloadCarouselAll } = await chrome.storage.sync.get({ downloadCarouselAll: true });
+        const { downloadCarouselAll } = await chrome.storage.sync.get({ downloadCarouselAll: false });
 
         // 1. Direct Video Injection
         if (directUrl) {

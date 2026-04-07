@@ -26,11 +26,21 @@
 
     <main>
       <div class="setting-group">
-        <label class="setting-title" for="button-style">Button Style</label>
+        <label class="setting-title" for="button-style">Download Button Style</label>
         <select id="button-style" class="modern-select">
           <option value="inline">Inline (Action Bar)</option>
           <option value="overlay">Overlay (On Media)</option>
         </select>
+      </div>
+
+      <div class="setting-group toggle-group">
+        <div class="setting-text">
+          <span class="setting-title">Show Video Controls</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="video-controls-toggle">
+          <span class="slider round"></span>
+        </label>
       </div>
 
       <div class="setting-group toggle-group">
@@ -45,10 +55,10 @@
 
       <div class="setting-group toggle-group">
         <div class="setting-text">
-          <span class="setting-title">Show Video Controls</span>
+          <span class="setting-title">Smart Download</span>
         </div>
         <label class="switch">
-          <input type="checkbox" id="video-controls-toggle">
+          <input type="checkbox" id="smart-routing-toggle">
           <span class="slider round"></span>
         </label>
       </div>
@@ -64,7 +74,7 @@
       </div>
 
       <button id="open-options" class="btn primary-btn options-btn"
-        style="border-radius: 8px; width: 85%; margin: 10px auto; display: flex;">
+        style="border-radius: 8px; width: 85%; margin: 6px auto; display: flex;">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3"></circle>
           <path

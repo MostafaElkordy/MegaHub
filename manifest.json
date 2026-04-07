@@ -6,9 +6,18 @@
     "permissions": [
         "storage",
         "downloads",
-        "offscreen",
-        "declarativeContent"
+        "declarativeContent",
+        "declarativeNetRequest"
     ],
+    "declarative_net_request": {
+        "rule_resources": [
+            {
+                "id": "cors_rules",
+                "enabled": true,
+                "path": "rules.json"
+            }
+        ]
+    },
     "host_permissions": [
         "*://*.instagram.com/*",
         "*://*.cdninstagram.com/*",

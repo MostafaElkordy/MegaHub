@@ -35,7 +35,7 @@ body {
 }
 
 .container {
-  padding: 15px 20px 10px 20px;
+  padding: 12px 16px 8px 16px;
   contain: content;
   /* Containment: isolates popup layout recalculations */
 }
@@ -45,8 +45,8 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 25px;
-  padding-bottom: 15px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -74,9 +74,9 @@ header h1 {
 }
 
 .setting-group {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   background-color: var(--secondary-bg);
-  padding: 12px 14px;
+  padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid var(--border-color);
 }
@@ -84,7 +84,7 @@ header h1 {
 .setting-group label {
   display: block;
   font-weight: 700;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   font-size: 0.95rem;
 }
 
@@ -198,7 +198,7 @@ input:checked+.slider:before {
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: 12px;
+  padding: 8px;
   border: none;
   border-radius: 10px;
   font-family: inherit;
@@ -226,8 +226,8 @@ input:checked+.slider:before {
 
 /* Footer */
 .popup-footer {
-  margin-top: 15px;
-  padding-top: 10px;
+  margin-top: 10px;
+  padding-top: 8px;
   border-top: 1px solid var(--border-color);
   text-align: center;
   font-size: 0.8rem;

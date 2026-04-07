@@ -2,9 +2,13 @@
  * Mega Hub — Optimized Background Service Worker
  * Handles fallback blob fetching for media downloads efficiently.
  */
-'use strict';
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // CRITICAL: Ignore messages targeted at the offscreen document.
+    // sendMessage broadcasts to ALL extension pages. Without this guard,
+    // background intercepts offscreen messages and closes the channel before offscreen responds.
+    if (request.target === 'offscreen') return false;
+
     if (request.action === 'update_badge' && sender.tab) {
         const count = request.count;
         if (count > 0) {
@@ -24,17 +28,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; // Keep message channel open for async response
     }
 
-    if (request.action === 'offscreen_save_blob') {
-        (async () => {
-            try {
-                await setupOffscreenDocument('offscreen.html');
-                const response = await chrome.runtime.sendMessage(request);
-                sendResponse(response);
-            } catch (err) {
-                console.error("MegaHub Background Offscreen Error:", err);
-                sendResponse({ success: false, error: err.message });
-            }
-        })();
+    if (request.action === 'smart_download') {
+        handleSmartDownload(request.data)
+            .then(sendResponse)
+            .catch(err => sendResponse({ success: false, error: err.message }));
         return true;
     }
 });
@@ -108,23 +105,39 @@ function blobToDataURL(blob) {
     });
 }
 
-// ============================================================
-// Offscreen Document Lifecycle Management
-// ============================================================
-let creatingOffscreen;
-async function setupOffscreenDocument(path) {
-    if (await chrome.offscreen.hasDocument()) return;
-
-    if (creatingOffscreen) {
-        await creatingOffscreen;
-    } else {
-        creatingOffscreen = chrome.offscreen.createDocument({
-            url: path,
-            reasons: ['BLOBS'],
-            justification: 'Streaming video downloads to the local filesystem directly to bypass memory limits'
+/**
+ * Smart Download: Save media to organized Downloads subfolders.
+ * Uses chrome.downloads.download() with organized subfolder paths.
+ * Folders are auto-created by Chrome if they don't exist.
+ * saveAs is ALWAYS false → truly automatic, no dialogs.
+ */
+async function handleSmartDownload({ url, filename, folderName }) {
+    try {
+        const settings = await chrome.storage.sync.get({
+            smartRoutingBasePath: 'Mega Hub'
         });
-        await creatingOffscreen;
-        creatingOffscreen = null;
+
+        const basePath = settings.smartRoutingBasePath.trim() || 'Mega Hub';
+        const safeFolder = (folderName || 'Misc').replace(/[^a-zA-Z0-9_\-\. ]/g, '').trim() || 'Misc';
+        const savePath = `${basePath}/${safeFolder}/${filename}`;
+
+        return new Promise((resolve) => {
+            chrome.downloads.download({
+                url: url,
+                filename: savePath,
+                saveAs: false,  // ALWAYS false → automatic saving, no dialog
+                conflictAction: 'uniquify'
+            }, (downloadId) => {
+                if (chrome.runtime.lastError) {
+                    resolve({ success: false, error: chrome.runtime.lastError.message });
+                } else {
+                    resolve({ success: true, downloadId });
+                }
+            });
+        });
+    } catch (err) {
+        console.error("MegaHub Smart Download Error:", err);
+        return { success: false, error: err.message };
     }
 }
 

@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const videoControlsToggle = document.getElementById('video-controls-toggle');
     const gpuAccelerationToggle = document.getElementById('gpu-acceleration-toggle');
     const buttonStyleSelect = document.getElementById('button-style');
+    const smartRoutingToggle = document.getElementById('smart-routing-toggle');
     const optionsBtn = document.getElementById('open-options');
 
     // Determine system preference defaults
@@ -20,12 +21,14 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadCarouselAll: false,
         buttonStyle: 'inline',
         videoControlsEnabled: false,
-        gpuAccelerationEnabled: false
+        gpuAccelerationEnabled: false,
+        smartRoutingEnabled: false
     }, (result) => {
         themeToggle.checked = result.theme === 'dark';
         downloadCarouselAllToggle.checked = result.downloadCarouselAll;
         videoControlsToggle.checked = result.videoControlsEnabled;
         gpuAccelerationToggle.checked = result.gpuAccelerationEnabled;
+        smartRoutingToggle.checked = result.smartRoutingEnabled;
         buttonStyleSelect.value = result.buttonStyle;
         applyTheme(result.theme);
     });
@@ -39,6 +42,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     downloadCarouselAllToggle.addEventListener('change', (e) => {
         chrome.storage.sync.set({ downloadCarouselAll: e.target.checked });
+    });
+
+    smartRoutingToggle.addEventListener('change', (e) => {
+        chrome.storage.sync.set({ smartRoutingEnabled: e.target.checked });
     });
 
     videoControlsToggle.addEventListener('change', (e) => {
