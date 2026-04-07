@@ -827,3 +827,28 @@ html.mh-gpu-acceleration video.mh-gpu-active {
 html.mh-gpu-acceleration.mh-is-reels video.mh-gpu-active {
     filter: brightness(1.04) contrast(1.03) saturate(1.02) !important;
 }
+
+/* ============================================================ */
+/* Global Video Controls Overrides                              */
+/* ============================================================ */
+
+/* Instantly hide native audio toggle AND neutralize the grey wrapper container to prevent flicker.
+   Safely restricted to immediate children/grandchildren to avoid hiding the entire Video UI overlay. */
+
+
+html[data-megahub-vc="true"] svg[aria-label*="udio" i],
+html[data-megahub-vc="true"] svg[aria-label*="صوت" i] {
+    display: none !important;
+    opacity: 0 !important;
+}
+
+
+html[data-megahub-vc="true"] *:has(> svg[aria-label*="udio" i]),
+html[data-megahub-vc="true"] *:has(> svg[aria-label*="صوت" i]),
+html[data-megahub-vc="true"] *:has(> * > svg[aria-label*="udio" i]),
+html[data-megahub-vc="true"] *:has(> * > svg[aria-label*="صوت" i]) {
+    /* Strip the grey background circle safely without collapsing layout */
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+}

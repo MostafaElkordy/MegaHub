@@ -7,6 +7,11 @@
 
 console.log("Mega Hub: Content script loaded");
 
+// Immediately sync state to prevent UI flicker of native audio icon
+chrome.storage.sync.get({ videoControlsEnabled: false }, (prefs) => {
+    if (prefs.videoControlsEnabled) document.documentElement.setAttribute('data-megahub-vc', 'true');
+});
+
 // ============================================================
 // Smart Download: IndexedDB helpers for File System Access API
 // Stores FileSystemDirectoryHandle in instagram.com's IndexedDB
@@ -218,6 +223,8 @@ chrome.runtime.onMessage.addListener((request) => {
     if (request.action === 'toggleVideoControls') {
         _videoControlsEnabled = request.enabled;
         document.documentElement.classList.toggle('megahub-video-controls-disabled', !_videoControlsEnabled);
+        if (_videoControlsEnabled) document.documentElement.setAttribute('data-megahub-vc', 'true');
+        else document.documentElement.removeAttribute('data-megahub-vc');
         if (_videoControlsEnabled) injectVideoControls();
     } else if (request.action === 'toggleGpuAcceleration') {
         _gpuAccelerationEnabled = request.enabled;
@@ -1084,16 +1091,26 @@ function injectReelsSidebarButton() {
         // Create the sidebar download button
         const dlBtn = document.createElement('div');
         dlBtn.className = 'megahub-reel-sidebar-btn';
+        
+        // Insert at the bottom, outside the Instagram hover bounding box
+        const targetParent = actionColumn.parentElement;
+        if (!targetParent) return;
+
+        // Fix for modal (horizontal) layout wrapping vs. Reels (vertical) sidebar
+        const isRow = window.getComputedStyle(targetParent).flexDirection === 'row' || window.getComputedStyle(actionColumn).flexDirection === 'row';
+        if (isRow || targetParent.closest('div[role="dialog"]')) {
+            dlBtn.style.marginTop = '0';
+            dlBtn.style.marginLeft = '0px'; // Prevent gap causing wrap
+            targetParent.style.flexWrap = 'nowrap';
+            targetParent.style.gap = '0px';
+        }
+
         dlBtn.setAttribute('role', 'button');
         dlBtn.setAttribute('tabindex', '0');
         dlBtn.title = 'Download';
         dlBtn.appendChild(SVG_TEMPLATES.downloadSmall.content.cloneNode(true));
 
-        // Insert at the bottom, outside the Instagram hover bounding box
-        const targetParent = actionColumn.parentElement;
-        if (targetParent) {
-            targetParent.appendChild(dlBtn);
-        }
+        targetParent.appendChild(dlBtn);
     });
 }
 
@@ -1261,7 +1278,7 @@ const observer = new MutationObserver(() => {
         _rafId = requestAnimationFrame(() => {
             injectButtons().catch(() => { });
         });
-    }, 400); // Wait 400ms after DOM settles to inject
+    }, 50); // Reduced from 400ms to 50ms to make button injection feel instant
 });
 
 // Run strictly on subtree changes
@@ -2074,6 +2091,17 @@ function injectVideoControls() {
             }
         });
 
+        // Click directly on the video should toggle play/pause ONLY in fullscreen mode
+        // (because when not in fullscreen, Instagram's native invisible overlay handles it)
+        video.addEventListener('click', (e) => {
+            if (document.fullscreenElement) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (video.paused) video.play();
+                else video.pause();
+            }
+        });
+
         // Initial setup
         updateUI();
     }
@@ -2096,7 +2124,7 @@ function injectVideoControls() {
             _vcDebounce = setTimeout(() => {
                 document.querySelectorAll('video:not([data-megahub-controls])').forEach(setupVideo);
                 _vcDebounce = null;
-            }, 500);
+            }, 50); // Reduced from 500ms to instantly hook videos without killing CPU
         }
     });
 
