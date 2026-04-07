@@ -13,7 +13,11 @@
         <aside class="sidebar">
             <div class="logo-area">
                 <img src="icons/icon48.png" alt="Mega Hub Logo" class="logo">
-                <h2>Mega Hub</h2>
+                <h2 style="display: flex; align-items: center; gap: 8px;">
+                    Mega Hub
+                    <span
+                        style="font-size: 11px; font-weight: 600; padding: 2px 6px; background: rgba(99, 102, 241, 0.1); color: var(--mh-primary); border-radius: 4px;">v1.0.0</span>
+                </h2>
             </div>
             <nav class="nav-links">
                 <a href="#general" class="nav-item active" data-tab="general">General</a>
@@ -49,6 +53,28 @@
                             <option value="inline">Inline (Action Bar)</option>
                             <option value="overlay">Overlay (On Media)</option>
                         </select>
+                    </div>
+
+                    <div class="setting-row-group">
+                        <div class="setting-row" style="border-bottom: none; padding-bottom: 8px;">
+                            <div class="setting-text">
+                                <h3>Carousel Naming Format</h3>
+                                <p>How individual images inside a downloaded carousel post are named</p>
+                            </div>
+                            <select id="opt-carousel-naming" class="modern-select">
+                                <option value="real_id">Real Media ID (default)</option>
+                                <option value="part">Suffix (_part1, _part2)</option>
+                                <option value="custom">Custom Suffix</option>
+                            </select>
+                        </div>
+
+                        <div class="sub-setting-row" id="custom-suffix-row" style="display: none;">
+                            <div class="setting-text">
+                                <h3>Custom Suffix</h3>
+                                <p>Type custom suffix ("slide", "pic", etc.). Leave it empty to use numbers only.</p>
+                            </div>
+                            <input type="text" id="opt-custom-suffix" class="modern-input" placeholder="e.g. slide" />
+                        </div>
                     </div>
                 </div>
             </section>

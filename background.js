@@ -148,15 +148,23 @@ function updateIconState(tabId, url) {
 
     if (url.includes('instagram.com')) {
         chrome.action.setIcon({ tabId, path: coloredIcons });
+        chrome.action.setPopup({ tabId, popup: 'popup.html' });
+        chrome.action.setTitle({ tabId, title: '' });
+        chrome.action.enable(tabId);
     } else {
         chrome.action.setIcon({ tabId, path: grayIcons });
+        chrome.action.setPopup({ tabId, popup: '' });
+        chrome.action.setTitle({ tabId, title: 'No access to this site' });
+        chrome.action.disable(tabId);
     }
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    // Only update if the URL actually changed to prevent redundant icon flashing
-    if (changeInfo.url) {
-        updateIconState(tabId, changeInfo.url);
+    // Update if the URL changes OR if the page literally finished loading/refreshing
+    if (changeInfo.url || changeInfo.status === 'complete') {
+        if (tab.url) {
+            updateIconState(tabId, tab.url);
+        }
     }
 });
 

@@ -21,11 +21,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 2. Load General Settings
     const themeSelect = document.getElementById('opt-theme');
     const buttonStyleSelect = document.getElementById('opt-button-style');
+    const carouselNamingSelect = document.getElementById('opt-carousel-naming');
+    const customSuffixInput = document.getElementById('opt-custom-suffix');
+    const customSuffixRow = document.getElementById('custom-suffix-row');
 
-    chrome.storage.sync.get({ theme: 'light', buttonStyle: 'inline' }, (res) => {
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+
+    chrome.storage.sync.get({
+        theme: systemTheme,
+        buttonStyle: 'inline',
+        carouselNamingFormat: 'real_id',
+        customCarouselSuffix: 'slide'
+    }, (res) => {
         themeSelect.value = res.theme;
         buttonStyleSelect.value = res.buttonStyle;
+        carouselNamingSelect.value = res.carouselNamingFormat;
+        customSuffixInput.value = res.customCarouselSuffix;
         document.documentElement.setAttribute('data-theme', res.theme);
+
+        if (res.carouselNamingFormat === 'custom') {
+            customSuffixRow.style.display = 'flex';
+        }
     });
 
     themeSelect.addEventListener('change', (e) => {
@@ -36,6 +52,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     buttonStyleSelect.addEventListener('change', (e) => {
         chrome.storage.sync.set({ buttonStyle: e.target.value });
+    });
+
+    carouselNamingSelect.addEventListener('change', (e) => {
+        const format = e.target.value;
+        chrome.storage.sync.set({ carouselNamingFormat: format });
+        if (format === 'custom') {
+            customSuffixRow.style.display = 'flex';
+            customSuffixInput.focus();
+        } else {
+            customSuffixRow.style.display = 'none';
+        }
+    });
+
+    customSuffixInput.addEventListener('input', (e) => {
+        chrome.storage.sync.set({ customCarouselSuffix: e.target.value.trim() });
     });
 
     // 3. Smart Storage Logic

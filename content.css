@@ -68,8 +68,8 @@
 /* ============================================================ */
 .ig-dl-btn {
     position: absolute;
-    top: 15px;
-    right: 15px;
+    top: 10px;
+    right: 10px;
     z-index: 9999;
     background-color: var(--mh-dark-bg);
     color: white;

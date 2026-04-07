@@ -5,20 +5,20 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     const themeToggle = document.getElementById('theme-toggle');
-    const showReelsBtnToggle = document.getElementById('show-reels-btn');
     const downloadCarouselAllToggle = document.getElementById('download-carousel-all');
     const buttonStyleSelect = document.getElementById('button-style');
     const optionsBtn = document.getElementById('open-options');
 
+    // Determine system preference defaults
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+
     // Load initial settings
     chrome.storage.sync.get({
-        theme: 'light',
-        showReelsBtn: true,
+        theme: systemTheme,
         downloadCarouselAll: true,
         buttonStyle: 'inline'
     }, (result) => {
         themeToggle.checked = result.theme === 'dark';
-        showReelsBtnToggle.checked = result.showReelsBtn;
         downloadCarouselAllToggle.checked = result.downloadCarouselAll;
         buttonStyleSelect.value = result.buttonStyle;
         applyTheme(result.theme);
@@ -29,15 +29,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const theme = e.target.checked ? 'dark' : 'light';
         chrome.storage.sync.set({ theme });
         applyTheme(theme);
-    });
-
-    showReelsBtnToggle.addEventListener('change', (e) => {
-        chrome.storage.sync.set({ showReelsBtn: e.target.checked });
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0]?.url?.includes('instagram.com')) {
-                chrome.tabs.sendMessage(tabs[0].id, { action: 'toggleReelsButtons', show: e.target.checked });
-            }
-        });
     });
 
     downloadCarouselAllToggle.addEventListener('change', (e) => {

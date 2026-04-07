@@ -143,15 +143,17 @@
         if (carouselItems) {
             entry.allMedia = [];
             carouselItems.forEach(item => {
+                const childPk = item.pk || item.id || '';
                 if (item.video_url || (item.video_versions && item.video_versions.length > 0)) {
                     entry.allMedia.push({
                         url: item.video_url || item.video_versions[0].url,
-                        type: 'video'
+                        type: 'video',
+                        childPk: childPk
                     });
                 } else if (item.display_url) {
-                    entry.allMedia.push({ url: item.display_url, type: 'image' });
+                    entry.allMedia.push({ url: item.display_url, type: 'image', childPk: childPk });
                 } else if (item.image_versions2) {
-                    entry.allMedia.push({ url: item.image_versions2.candidates[0].url, type: 'image' });
+                    entry.allMedia.push({ url: item.image_versions2.candidates[0].url, type: 'image', childPk: childPk });
                 }
             });
         }

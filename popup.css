@@ -1,34 +1,33 @@
 /* Mega Hub — Optimized Popup Styles */
 
 :root {
-  --bg-color: #ffffff;
-  --text-color: #333333;
+  --bg-color: #f0f2f5;
+  --text-color: #000000;
   --primary-color: #E1306C;
   --primary-hover: #C13584;
-  --border-color: #eeeeee;
-  --secondary-bg: #f8f9fa;
-  --shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-  --text-muted: #888888;
+  --border-color: #cbd5e1;
+  --secondary-bg: #ffffff;
+  --text-muted: #475569;
   --transition-speed: 0.3s ease;
   --switch-speed: 0.4s;
 }
 
 [data-theme="dark"] {
-  --bg-color: #121212;
-  --text-color: #f1f1f1;
+  --bg-color: #292a2d;
+  --text-color: #e8eaed;
   --primary-color: #E1306C;
   --primary-hover: #F56040;
-  --border-color: #333333;
-  --secondary-bg: #1e1e1e;
-  --shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  --text-muted: #aaaaaa;
+  --border-color: #4a4d51;
+  --secondary-bg: #35363a;
+  --text-muted: #9aa0a6;
 }
 
 /* Base Body & Container */
 body {
   margin: 0;
   padding: 0;
-  width: 340px;
+  width: 300px;
+  box-sizing: border-box;
   font-family: 'Outfit', sans-serif;
   background-color: var(--bg-color);
   color: var(--text-color);
@@ -36,7 +35,7 @@ body {
 }
 
 .container {
-  padding: 20px;
+  padding: 15px 20px 10px 20px;
   contain: content;
   /* Containment: isolates popup layout recalculations */
 }
@@ -74,13 +73,12 @@ header h1 {
   object-fit: contain;
 }
 
-/* Settings Blocks */
 .setting-group {
   margin-bottom: 20px;
   background-color: var(--secondary-bg);
   padding: 15px;
   border-radius: 12px;
-  box-shadow: var(--shadow);
+  border: 1px solid var(--border-color);
 }
 
 .setting-group label {
@@ -101,6 +99,11 @@ header h1 {
   outline: none;
   cursor: pointer;
   appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
   transition: background-color var(--transition-speed), color var(--transition-speed), border-color var(--transition-speed);
 }
 
@@ -211,12 +214,10 @@ input:checked+.slider:before {
 .primary-btn {
   background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
   color: white;
-  box-shadow: 0 4px 15px rgba(225, 48, 108, 0.4);
 }
 
 .primary-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(225, 48, 108, 0.6);
 }
 
 .primary-btn:active {
@@ -224,9 +225,28 @@ input:checked+.slider:before {
 }
 
 /* Footer */
-footer {
-  margin-top: 25px;
+.popup-footer {
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
   text-align: center;
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+.footer-title {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.footer-tip {
+  margin: 0;
+  font-size: 0.75rem;
+  background: -webkit-linear-gradient(45deg, #f09433, #dc2743, #bc1888);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 700;
 }

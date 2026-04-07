@@ -112,7 +112,7 @@ let _currentButtonStyle = 'inline';
 // Main Entry: Inject download buttons on all supported pages
 // ============================================================
 async function injectButtons() {
-    let settings = { showReelsBtn: true, buttonStyle: 'inline' };
+    let settings = { buttonStyle: 'inline' };
     try {
         settings = await chrome.storage.sync.get(settings);
     } catch (e) {
@@ -125,32 +125,17 @@ async function injectButtons() {
     injectFeedButtons();
     injectFeedInlineButtons();
     injectSinglePostButtons();
-    if (settings.showReelsBtn) {
-        injectReelsButtons();
-        injectReelsSidebarButton();
-    }
+    injectReelsButtons();
+    injectReelsSidebarButton();
     injectGridButtons();
     injectAvatarButton();
 }
 
 // Handle messages from popup
 chrome.runtime.onMessage.addListener((request) => {
-    if (request.action === 'toggleReelsButtons') {
-        if (request.show) {
-            injectButtons().catch(() => { });
-        } else {
-            document.querySelectorAll('.megahub-reel-sidebar-btn').forEach(el => el.remove());
-            document.querySelectorAll('[data-megahub-injected]').forEach(el => {
-                const btn = el.querySelector('.ig-dl-btn');
-                if (btn && !el.closest('article')) {
-                    btn.remove();
-                    delete el.dataset.megahubInjected;
-                }
-            });
-        }
-    }
-
-    if (request.action === 'switchButtonStyle') {
+    if (request.action === 'toggleCarouselDownload') {
+        _carouselDownloadEnabled = request.enabled;
+    } else if (request.action === 'switchButtonStyle') {
         // Remove ALL injected download buttons across the page
         document.querySelectorAll('.ig-dl-btn.single-dl').forEach(el => el.remove());
         document.querySelectorAll('.ig-dl-btn').forEach(el => {
@@ -173,21 +158,28 @@ chrome.runtime.onMessage.addListener((request) => {
 // ============================================================
 function injectFeedButtons() {
     if (_currentButtonStyle !== 'overlay') return;
+    if (window.location.pathname.includes('/saved/')) return;
 
-    const articles = document.querySelectorAll('article');
+    const container = document.querySelector('div[role="dialog"]') || document.querySelector('main') || document;
+    const articles = container.querySelectorAll('article');
     articles.forEach(article => {
-        // Stop if the button already exists inside this article to prevent duplicates
-        if (article.querySelector('.ig-dl-btn')) return;
+        // Find ALL media elements in the post (handles carousels naturally)
+        const mediaNodes = article.querySelectorAll('video, img[srcset]:not([alt*="profile"]:not([alt*="صورة"])), img[style*="object-fit"]:not([alt*="profile"]):not([alt*="صورة"])');
 
-        const mediaSection = findMediaSection(article);
-        if (!mediaSection) return;
+        mediaNodes.forEach(media => {
+            // Check if wrapper already has a button
+            const wrapper = media.parentElement;
+            if (!wrapper || wrapper.querySelector('.ig-dl-btn')) return;
 
-        const hasVideo = !!mediaSection.querySelector('video');
-        const hasImage = !!mediaSection.querySelector('img[srcset], img[style*="object-fit"]');
+            // Only inject if it's a structural wrapper (ignore tiny icons)
+            if (wrapper.offsetWidth > 150 && wrapper.offsetHeight > 150) {
+                // Ensure wrapper is relative so absolute button anchors properly to the slide
+                const style = window.getComputedStyle(wrapper);
+                if (style.position === 'static') wrapper.style.position = 'relative';
 
-        if (hasVideo || hasImage) {
-            addDownloadButton(mediaSection, article);
-        }
+                addDownloadButton(wrapper, article);
+            }
+        });
     });
 }
 
@@ -196,8 +188,10 @@ function injectFeedButtons() {
 // ============================================================
 function injectFeedInlineButtons() {
     if (_currentButtonStyle !== 'inline') return;
+    if (window.location.pathname.includes('/saved/')) return;
 
-    const articles = document.querySelectorAll('article');
+    const container = document.querySelector('div[role="dialog"]') || document.querySelector('main') || document;
+    const articles = container.querySelectorAll('article');
     articles.forEach(article => {
         if (article.querySelector('.megahub-inline-dl')) return;
 
@@ -310,18 +304,6 @@ function getBestImageUrl(img) {
 // ============================================================
 // Feed Post Download Button
 // ============================================================
-function addDownloadButton(mediaSection, article) {
-    if (mediaSection.querySelector('.ig-dl-btn.single-dl')) return;
-
-    const btn = document.createElement('button');
-    btn.className = 'ig-dl-btn single-dl';
-    btn.appendChild(SVG_TEMPLATES.downloadText.content.cloneNode(true));
-
-    const username = getUsername(article);
-
-    mediaSection.appendChild(btn);
-}
-
 // ============================================================
 // Core Download Logic: Get media URL and trigger download
 // ============================================================
@@ -453,11 +435,14 @@ async function fetchFromPublicApi(shortcode) {
 // Add Download Button
 // ============================================================
 function addDownloadButton(mediaSection, article) {
-    if (mediaSection.querySelector('.ig-dl-btn') || (article && article.querySelector('.ig-dl-btn'))) return;
+    if (mediaSection.querySelector('.ig-dl-btn')) return;
 
     const btn = document.createElement('button');
     btn.className = 'ig-dl-btn single-dl';
     btn.title = 'Download Media';
+
+    // Overlap the sliding image correctly
+    btn.style.zIndex = '99';
 
     btn.appendChild(SVG_TEMPLATES.downloadSmall.content.cloneNode(true));
     btn.append(' Download');
@@ -639,22 +624,37 @@ async function _downloadViaBlobTarget(url, username, type, meta = {}) {
     // Clean encoded characters
     url = url.replace(/\\u0026/g, '&').replace(/\\\//g, '/').replace(/&amp;/g, '&');
 
-    // Build filename using Instagram's naming convention
     const ext = type === 'video' ? '.mp4' : '.jpg';
     const safeUser = (meta.realUsername || username || 'user').replace(/[^a-zA-Z0-9_\.]/g, '');
-    const mediaPk = String(meta.mediaPk || '');
     const takenAt = String(meta.takenAt || '');
     const userPk = String(meta.userPk || '');
 
-    const idxStr = meta.mediaIndex ? `_part${meta.mediaIndex}` : '';
+    // Initialize formatting preferences
+    const { carouselNamingFormat = 'real_id', customCarouselSuffix = 'slide' } = await chrome.storage.sync.get(['carouselNamingFormat', 'customCarouselSuffix']);
+
+    let targetMediaId = String(meta.mediaPk || '');
+    let idxStr = '';
+
+    // If this is a child slide in a carousel, apply the naming format rules
+    if (meta.mediaIndex) {
+        if (carouselNamingFormat === 'real_id' && meta.childPk) {
+            targetMediaId = String(meta.childPk);
+            idxStr = ''; // Do not append _part when using absolute real IDs
+        } else if (carouselNamingFormat === 'custom') {
+            idxStr = `_${customCarouselSuffix}${meta.mediaIndex}`;
+        } else {
+            // Default "part" mode
+            idxStr = `_part${meta.mediaIndex}`;
+        }
+    }
 
     let filename;
-    if (mediaPk && takenAt && userPk) {
-        filename = `${safeUser}_${takenAt}_${mediaPk}_${userPk}${idxStr}${ext}`;
-    } else if (mediaPk && takenAt) {
-        filename = `${safeUser}_${takenAt}_${mediaPk}${idxStr}${ext}`;
-    } else if (mediaPk) {
-        filename = `${safeUser}_${mediaPk}${idxStr}${ext}`;
+    if (targetMediaId && takenAt && userPk) {
+        filename = `${safeUser}_${takenAt}_${targetMediaId}_${userPk}${idxStr}${ext}`;
+    } else if (targetMediaId && takenAt) {
+        filename = `${safeUser}_${takenAt}_${targetMediaId}${idxStr}${ext}`;
+    } else if (targetMediaId) {
+        filename = `${safeUser}_${targetMediaId}${idxStr}${ext}`;
     } else {
         filename = `${safeUser}_${extractIdFromUrl(url)}${idxStr}${ext}`;
     }
@@ -869,7 +869,7 @@ function injectReelButton(container) {
     const btn = document.createElement('button');
     btn.className = 'ig-dl-btn single-dl';
     btn.appendChild(SVG_TEMPLATES.downloadText.content.cloneNode(true));
-    btn.style.cssText = 'top:20px; right:20px; z-index:99999';
+    btn.style.zIndex = '99999';
 
     const userLink = container.querySelector('a[href^="/"]');
     const username = userLink?.textContent?.trim() || 'ig_reel';
@@ -948,34 +948,20 @@ function injectSinglePostButtons() {
     const container = document.querySelector('div[role="dialog"]') || document.querySelector('main');
     if (!container) return;
 
-    const carouselUl = container.querySelector('ul');
+    const article = container.querySelector('article') || container;
+    const mediaNodes = article.querySelectorAll('video, img[srcset]:not([alt*="profile"]:not([alt*="صورة"])), img[style*="object-fit"]:not([alt*="profile"]):not([alt*="صورة"])');
 
-    if (carouselUl) {
-        // Carousel Logic: Button per slide
-        const slides = carouselUl.querySelectorAll('li');
-        slides.forEach(slide => {
-            const hasMedia = slide.querySelector('video, img[srcset], img[style*="object-fit"]');
-            if (hasMedia && !slide.querySelector('.ig-dl-btn')) {
-                slide.style.position = 'relative';
-                addDownloadButton(slide, container.querySelector('article') || container);
-            }
-        });
-    } else {
-        // Single Media Logic
-        if (container.querySelector('.ig-dl-btn')) return;
+    mediaNodes.forEach(media => {
+        const wrapper = media.parentElement;
+        if (!wrapper || wrapper.querySelector('.ig-dl-btn')) return;
 
-        const video = container.querySelector('video');
-        const img = container.querySelector('img[srcset], img[style*="object-fit"]');
+        if (wrapper.offsetWidth > 150 && wrapper.offsetHeight > 150) {
+            const style = window.getComputedStyle(wrapper);
+            if (style.position === 'static') wrapper.style.position = 'relative';
 
-        if (video || img) {
-            const article = container.querySelector('article') || container;
-            const mediaSection = findMediaSection(article);
-            if (mediaSection) {
-                mediaSection.style.position = 'relative';
-                addDownloadButton(mediaSection, article);
-            }
+            addDownloadButton(wrapper, article);
         }
-    }
+    });
 }
 
 // ============================================================
@@ -1227,7 +1213,7 @@ setTimeout(() => requestAnimationFrame(() => injectButtons().catch(() => { })), 
 // ============================================================
 // Event Delegation: One listener to rule them all (Eliminates memory leaks)
 // ============================================================
-async function handlePostDataDownload(postData, defaultUsername) {
+async function handlePostDataDownload(postData, defaultUsername, targetIndex = 0) {
     if (!postData?.success) return false;
 
     const meta = {
@@ -1244,7 +1230,7 @@ async function handlePostDataDownload(postData, defaultUsername) {
         let queuedCount = 0;
         postData.allMedia.forEach((mediaItem, index) => {
             if (mediaItem.url) {
-                const itemMeta = { ...meta, mediaIndex: index + 1 };
+                const itemMeta = { ...meta, mediaIndex: index + 1, childPk: mediaItem.childPk || '' };
                 // Enqueue instantly to hit the QueueManager pool
                 downloadViaBlob(mediaItem.url, targetUser, mediaItem.type, itemMeta);
                 queuedCount++;
@@ -1252,6 +1238,13 @@ async function handlePostDataDownload(postData, defaultUsername) {
         });
         return queuedCount > 0;
     } else {
+        // Find the specific slide index if provided (solves the first-image carousel loop bug)
+        // Check >= 0 because targetIndex could be 0 for the very first slide of a carousel
+        if (targetIndex >= 0 && postData.allMedia && postData.allMedia.length > targetIndex) {
+            const item = postData.allMedia[targetIndex];
+            if (item.url) return await downloadViaBlob(item.url, targetUser, item.type, { ...meta, mediaIndex: targetIndex + 1, childPk: item.childPk || '' });
+        }
+
         const url = postData.videoUrl || postData.imageUrl;
         const type = postData.videoUrl ? 'video' : 'image';
         if (url) {
@@ -1321,6 +1314,7 @@ document.body.addEventListener('click', async (e) => {
     const container = btn.closest('article') || btn.closest('div[data-pressable-container="true"]') || btn.closest('section') || btn.closest('div[style]');
     const isSingleTextBtn = btn.classList.contains('single-dl');
     let success = false;
+    let visibleMedia = null;
 
     if (isSingleTextBtn) {
         btn.innerHTML = 'Fetching...';
@@ -1371,57 +1365,63 @@ document.body.addEventListener('click', async (e) => {
 
         // 3. Structural & Geometric Viewport Scan (Single Download Priority)
         if (!success && mediaSection) {
-            let visibleMedia = null;
 
-            // Strategy 3a: Carousel UL/LI structural matching (Highly accurate for Instagram Carousels)
-            const carouselUl = mediaSection.querySelector('ul');
+            // Strategy 3: Target visually active Media by Geometric Proximity
+            // We only care about finding the local DOM element so we can extract its visual properties.
+            // DO NOT try to calculate absolute indices from `li` elements, as React dynamically unloads them from the DOM!
+            const allUls = Array.from(container.querySelectorAll('ul'));
+            const carouselUl = allUls.find(ul => ul.querySelector('li img[srcset], li img[style*="object-fit"], li video'));
             if (carouselUl) {
                 const lis = Array.from(carouselUl.querySelectorAll('li'));
-                const sectionRect = mediaSection.getBoundingClientRect();
-                const sectionCenterX = sectionRect.left + (sectionRect.width / 2);
-                let activeLi = null;
-                let minDiff = Infinity;
-
-                for (const li of lis) {
-                    const liRect = li.getBoundingClientRect();
-                    // The active slide is the one whose center is closest to the center of the post container
-                    const liCenterX = liRect.left + (liRect.width / 2);
-                    const diff = Math.abs(liCenterX - sectionCenterX);
-
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        activeLi = li;
+                if (lis.length > 0) {
+                    // Find the exact physical clipping mask enclosing the carousel
+                    let viewportNode = carouselUl.parentElement;
+                    while (viewportNode && viewportNode !== document.body) {
+                        const style = window.getComputedStyle(viewportNode);
+                        if (style.overflow === 'hidden' || style.overflowX === 'hidden' || style.overflowX === 'clip' || style.overflowX === 'auto') {
+                            break;
+                        }
+                        viewportNode = viewportNode.parentElement;
                     }
-                }
+                    if (!viewportNode) viewportNode = carouselUl.parentElement;
 
-                if (activeLi) {
-                    // Search only within the active slide snippet
-                    visibleMedia = activeLi.querySelector('video, img[srcset], img[style*="object-fit"]');
+                    const viewportRect = viewportNode.getBoundingClientRect();
+                    const viewportLeft = viewportRect.left;
+                    const viewportRight = viewportRect.right;
+
+                    let maxIntersection = 0;
+                    let activeLi = null;
+
+                    lis.forEach((li) => {
+                        if (!li.querySelector('img[srcset], img[style*="object-fit"], video')) return;
+
+                        const liRect = li.getBoundingClientRect();
+                        if (liRect.width === 0 || liRect.height === 0) return;
+
+                        // Calculate exact pixel intersection with the clipping viewport
+                        const intersectLeft = Math.max(viewportLeft, liRect.left);
+                        const intersectRight = Math.min(viewportRight, liRect.right);
+                        const intersectWidth = Math.max(0, intersectRight - intersectLeft);
+
+                        if (intersectWidth > maxIntersection) {
+                            maxIntersection = intersectWidth;
+                            activeLi = li;
+                        }
+                    });
+
+                    if (activeLi) {
+                        visibleMedia = activeLi.querySelector('video, img[srcset], img[style*="object-fit"]');
+                    }
                 }
             }
 
-            // Strategy 3b: Fallback to geometric center matching for non-carousels or if 3a fails
+            // Fallback for non-carousels (single image/video post)
             if (!visibleMedia) {
-                const allMedia = Array.from(mediaSection.querySelectorAll('img[srcset], img[style*="object-fit"], video'));
-                let minCenterDistance = Infinity;
-
-                const sectionRect = mediaSection.getBoundingClientRect();
-                const sectionCenterX = sectionRect.left + (sectionRect.width / 2);
-
+                const allMedia = Array.from(container.querySelectorAll('img[srcset], img[style*="object-fit"], video'));
                 for (const mediaEl of allMedia) {
                     if (mediaEl.alt && (mediaEl.alt.includes('profile') || mediaEl.alt.includes('صورة'))) continue;
-
-                    const rect = mediaEl.getBoundingClientRect();
-
-                    if (rect.width > 50 && rect.height > 50) {
-                        const elCenterX = rect.left + (rect.width / 2);
-                        const distance = Math.abs(elCenterX - sectionCenterX);
-
-                        if (distance < minCenterDistance) {
-                            minCenterDistance = distance;
-                            visibleMedia = mediaEl;
-                        }
-                    }
+                    visibleMedia = mediaEl;
+                    break;
                 }
             }
 
@@ -1434,21 +1434,60 @@ document.body.addEventListener('click', async (e) => {
                     if (imgUrl) success = await downloadViaBlob(imgUrl, username, 'image', {});
                 }
             }
-
-            // Ultimate fallback for geometric scan
-            if (!success) {
-                const img = mediaSection.querySelector('img[srcset], img[style*="object-fit"]');
-                if (img) {
-                    const imgUrl = getBestImageUrl(img);
-                    if (imgUrl) success = await downloadViaBlob(imgUrl, username, 'image', {});
-                }
-            }
         }
 
-        // 4. API Fallback (If geometric fails and it's a single post)
+        // 4. API Fallback (If geometric/Blob fails and it's a single post)
         if (!success && shortcode) {
             const postData = await requestPostData(shortcode);
-            success = await handlePostDataDownload(postData, username);
+            let targetIndex = 0;
+            let foundAbsolute = false;
+
+            // SYNC INDEX METHOD A: Media Visual Fingerprinting
+            // The local DOM image element's URL contains a unique ID hash. 
+            // We extract it and find the matching hash in the API's media array.
+            if (visibleMedia && postData && postData.allMedia) {
+                const rawSrc = visibleMedia.currentSrc || visibleMedia.src || (visibleMedia.srcset ? visibleMedia.srcset.split(' ')[0] : '');
+                if (rawSrc && !rawSrc.startsWith('blob:')) {
+                    const hashExtractor = /\/([^\/\?]+)\.(webp|jpg|jpeg|heic|mp4)/i.exec(rawSrc);
+                    const localBase = hashExtractor ? hashExtractor[1] : null;
+
+                    if (localBase) {
+                        for (let i = 0; i < postData.allMedia.length; i++) {
+                            const apiMedia = postData.allMedia[i];
+                            const apiUrl = apiMedia.videoUrl || apiMedia.imageUrl || apiMedia.url || '';
+                            if (apiUrl.includes(localBase)) {
+                                targetIndex = i;
+                                foundAbsolute = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // SYNC INDEX METHOD B: Pagination Dots Fallback (crucial for Blob videos)
+            // If it's a video block without a raw hashed URL, we visually count the Pagination Dots UI at the bottom of the post.
+            if (!foundAbsolute && container && postData && postData.allMedia && postData.allMedia.length > 1) {
+                const expectedLength = postData.allMedia.length;
+                const dotContainers = Array.from(container.querySelectorAll('div')).filter(div => {
+                    return div.childElementCount === expectedLength &&
+                        Array.from(div.children).every(c => c.clientWidth > 0 && c.clientWidth < 35 && c.clientHeight < 35);
+                });
+
+                if (dotContainers.length > 0) {
+                    const dots = Array.from(dotContainers[dotContainers.length - 1].children);
+                    const classCounts = {};
+                    dots.forEach(d => classCounts[d.className] = (classCounts[d.className] || 0) + 1);
+                    const activeDot = dots.find(d => classCounts[d.className] === 1);
+                    if (activeDot) {
+                        const dotIndex = dots.indexOf(activeDot);
+                        if (dotIndex !== -1) targetIndex = dotIndex;
+                    }
+                }
+            }
+
+            // Execute the heavily optimized download with the verified global index!
+            success = await handlePostDataDownload(postData, username, targetIndex);
 
             if (!success) {
                 const apiUrl = await fetchFromPublicApi(shortcode);

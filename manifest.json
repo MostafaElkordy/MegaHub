@@ -42,7 +42,8 @@
         }
     ],
     "action": {
-        "default_popup": "popup.html",
+        "default_title": "No access to this site",
+        "default_popup": "",
         "default_icon": {
             "16": "icons/icon16_gray.png",
             "48": "icons/icon48_gray.png",
