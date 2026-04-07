@@ -21,6 +21,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 2. Load General Settings
     const themeSelect = document.getElementById('opt-theme');
     const buttonStyleSelect = document.getElementById('opt-button-style');
+    const videoControlsToggle = document.getElementById('opt-video-controls-toggle');
+    const gradientSliderRow = document.getElementById('gradient-slider-row');
+    const optGradientSlider = document.getElementById('opt-gradient-slider');
+    const gradientValDisplay = document.getElementById('gradient-val-display');
+
+    const persistentControlsToggle = document.getElementById('opt-persistent-controls');
+    const persistentControlsRow = document.getElementById('persistent-controls-row');
+
+    const gpuAccelerationToggle = document.getElementById('opt-gpu-acceleration-toggle');
     const carouselNamingSelect = document.getElementById('opt-carousel-naming');
     const customSuffixInput = document.getElementById('opt-custom-suffix');
     const customSuffixRow = document.getElementById('custom-suffix-row');
@@ -30,14 +39,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     chrome.storage.sync.get({
         theme: systemTheme,
         buttonStyle: 'inline',
+        videoControlsEnabled: false,
+        videoControlsGradientHeight: 75, /* Default requested by user */
+        videoControlsPersistent: false,
+        gpuAccelerationEnabled: false,
         carouselNamingFormat: 'real_id',
         customCarouselSuffix: 'slide'
     }, (res) => {
         themeSelect.value = res.theme;
         buttonStyleSelect.value = res.buttonStyle;
+        videoControlsToggle.checked = res.videoControlsEnabled;
+        persistentControlsToggle.checked = res.videoControlsPersistent;
+        optGradientSlider.value = res.videoControlsGradientHeight;
+        gradientValDisplay.textContent = res.videoControlsGradientHeight;
+        
+        // Set initial tooltip position without triggering input event
+        const initialVal = res.videoControlsGradientHeight;
+        const initialPercent = (initialVal - 1) / 149 * 100;
+        document.getElementById('slider-tooltip').textContent = initialVal;
+        document.getElementById('slider-tooltip').style.left = `calc(${initialPercent}% + (${8 - initialPercent * 0.16}px))`;
+
+        gpuAccelerationToggle.checked = res.gpuAccelerationEnabled;
         carouselNamingSelect.value = res.carouselNamingFormat;
         customSuffixInput.value = res.customCarouselSuffix;
         document.documentElement.setAttribute('data-theme', res.theme);
+
+        if (res.videoControlsEnabled) {
+            gradientSliderRow.style.display = 'flex';
+            persistentControlsRow.style.display = 'flex';
+        }
 
         if (res.carouselNamingFormat === 'custom') {
             customSuffixRow.style.display = 'flex';
@@ -52,6 +82,75 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     buttonStyleSelect.addEventListener('change', (e) => {
         chrome.storage.sync.set({ buttonStyle: e.target.value });
+    });
+
+    videoControlsToggle.addEventListener('change', (e) => {
+        const isEnabled = e.target.checked;
+        chrome.storage.sync.set({ videoControlsEnabled: isEnabled });
+        
+        // Toggle the sub-setting rows
+        gradientSliderRow.style.display = isEnabled ? 'flex' : 'none';
+        persistentControlsRow.style.display = isEnabled ? 'flex' : 'none';
+
+        chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
+            tabs.forEach(tab => {
+                chrome.tabs.sendMessage(tab.id, { action: 'toggleVideoControls', enabled: isEnabled }).catch(() => {});
+            });
+        });
+    });
+
+    optGradientSlider.addEventListener('input', (e) => {
+        const val = e.target.value;
+        gradientValDisplay.textContent = val;
+        
+        // Update slider tooltip
+        const tooltip = document.getElementById('slider-tooltip');
+        tooltip.textContent = val;
+        const percent = (val - 1) / 149 * 100;
+        tooltip.style.left = `calc(${percent}% + (${8 - percent * 0.16}px))`;
+
+        // Realtime Chrome sync to Instagram tabs while sliding
+        chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
+            tabs.forEach(tab => {
+                chrome.tabs.sendMessage(tab.id, { action: 'updateGradientHeight', height: parseInt(val, 10) }).catch(() => {});
+            });
+        });
+    });
+
+    optGradientSlider.addEventListener('change', (e) => {
+        // Save to storage ONLY on change to avoid hitting write limits
+        const val = parseInt(e.target.value, 10);
+        chrome.storage.sync.set({ videoControlsGradientHeight: val });
+    });
+
+    // Make scale numbers clickable
+    document.querySelectorAll('.slider-scale span').forEach(span => {
+        span.addEventListener('click', (e) => {
+            const val = e.target.getAttribute('data-val');
+            optGradientSlider.value = val;
+            optGradientSlider.dispatchEvent(new Event('input'));
+            optGradientSlider.dispatchEvent(new Event('change'));
+        });
+    });
+
+    persistentControlsToggle.addEventListener('change', (e) => {
+        const isEnabled = e.target.checked;
+        chrome.storage.sync.set({ videoControlsPersistent: isEnabled });
+        chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
+            tabs.forEach(tab => {
+                chrome.tabs.sendMessage(tab.id, { action: 'togglePersistentControls', enabled: isEnabled }).catch(() => {});
+            });
+        });
+    });
+
+    gpuAccelerationToggle.addEventListener('change', (e) => {
+        const isEnabled = e.target.checked;
+        chrome.storage.sync.set({ gpuAccelerationEnabled: isEnabled });
+        chrome.tabs.query({ url: '*://*.instagram.com/*' }, (tabs) => {
+            tabs.forEach(tab => {
+                chrome.tabs.sendMessage(tab.id, { action: 'toggleGpuAcceleration', enabled: isEnabled }).catch(() => {});
+            });
+        });
     });
 
     carouselNamingSelect.addEventListener('change', (e) => {

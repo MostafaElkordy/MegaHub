@@ -55,6 +55,59 @@
                         </select>
                     </div>
 
+                    <div class="setting-row">
+                        <div class="setting-text">
+                            <h3>Show Video Controls</h3>
+                            <p>Inject custom media controls overlay for Instagram videos</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="opt-video-controls-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div class="sub-setting-row" id="persistent-controls-row" style="display: none; padding-bottom: 4px;">
+                        <div class="setting-text">
+                            <h3>Always Visible</h3>
+                            <p>Pin the control bar permanently, even without hover</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="opt-persistent-controls">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div class="sub-setting-row" id="gradient-slider-row" style="display: none; padding-bottom: 20px;">
+                        <div class="setting-text">
+                            <h3>Video Controls Opacity (<span id="gradient-val-display">75</span>)</h3>
+                            <p>Adjust the dark bottom fade area (Default: 75)</p>
+                        </div>
+                        <div class="slider-container">
+                            <div id="slider-tooltip" class="slider-tooltip">75</div>
+                            <input type="range" id="opt-gradient-slider" min="1" max="150" value="75" style="width: 100%; accent-color: #E1306C; cursor: pointer; margin: 0;">
+                            <div class="slider-scale">
+                                <span data-val="1">1</span>
+                                <span data-val="25">25</span>
+                                <span data-val="50">50</span>
+                                <span data-val="75">75</span>
+                                <span data-val="100">100</span>
+                                <span data-val="125">125</span>
+                                <span data-val="150">150</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="setting-row">
+                        <div class="setting-text">
+                            <h3>Smart Graphics Acceleration</h3>
+                            <p>Force the browser to strictly process videos using hardware acceleration shaders (bypasses blurry overlays)</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="opt-gpu-acceleration-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
                     <div class="setting-row-group">
                         <div class="setting-row" style="border-bottom: none; padding-bottom: 8px;">
                             <div class="setting-text">

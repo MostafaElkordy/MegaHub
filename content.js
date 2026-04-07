@@ -105,14 +105,18 @@ function requestAvatarData(username) {
     });
 }
 
-// Global button style — each injection function checks this
+// Global states
 let _currentButtonStyle = 'inline';
+let _videoControlsEnabled = false;
+let _gpuAccelerationEnabled = false;
+let _videoControlsGradientHeight = 75;
+let _videoControlsPersistent = false;
 
 // ============================================================
 // Main Entry: Inject download buttons on all supported pages
 // ============================================================
 async function injectButtons() {
-    let settings = { buttonStyle: 'inline' };
+    let settings = { buttonStyle: 'inline', videoControlsEnabled: false, gpuAccelerationEnabled: false, videoControlsGradientHeight: 75, videoControlsPersistent: false };
     try {
         settings = await chrome.storage.sync.get(settings);
     } catch (e) {
@@ -120,6 +124,10 @@ async function injectButtons() {
     }
 
     _currentButtonStyle = settings.buttonStyle;
+    _videoControlsEnabled = settings.videoControlsEnabled;
+    _gpuAccelerationEnabled = settings.gpuAccelerationEnabled;
+    _videoControlsGradientHeight = settings.videoControlsGradientHeight;
+    _videoControlsPersistent = settings.videoControlsPersistent;
 
     // Call all — each function checks _currentButtonStyle and skips if not its mode
     injectFeedButtons();
@@ -129,12 +137,37 @@ async function injectButtons() {
     injectReelsSidebarButton();
     injectGridButtons();
     injectAvatarButton();
+
+    // Inject custom video controls if enabled
+    document.documentElement.classList.toggle('megahub-video-controls-disabled', !_videoControlsEnabled);
+    if (_videoControlsEnabled) {
+        injectVideoControls();
+    }
+
+    // Toggle GPU global sharpness enforcement on the root document
+    document.documentElement.classList.toggle('mh-gpu-acceleration', _gpuAccelerationEnabled);
+
+    // Toggle persistent video controls global class
+    document.documentElement.classList.toggle('mh-persistent-controls', _videoControlsPersistent);
 }
 
 // Handle messages from popup
 chrome.runtime.onMessage.addListener((request) => {
-    if (request.action === 'toggleCarouselDownload') {
-        _carouselDownloadEnabled = request.enabled;
+    if (request.action === 'toggleVideoControls') {
+        _videoControlsEnabled = request.enabled;
+        document.documentElement.classList.toggle('megahub-video-controls-disabled', !_videoControlsEnabled);
+        if (_videoControlsEnabled) injectVideoControls();
+    } else if (request.action === 'toggleGpuAcceleration') {
+        _gpuAccelerationEnabled = request.enabled;
+        document.documentElement.classList.toggle('mh-gpu-acceleration', _gpuAccelerationEnabled);
+    } else if (request.action === 'updateGradientHeight') {
+        _videoControlsGradientHeight = request.height;
+        document.querySelectorAll('.megahub-vc-gradient').forEach(el => {
+            el.style.height = `${_videoControlsGradientHeight}px`;
+        });
+    } else if (request.action === 'togglePersistentControls') {
+        _videoControlsPersistent = request.enabled;
+        document.documentElement.classList.toggle('mh-persistent-controls', _videoControlsPersistent);
     } else if (request.action === 'switchButtonStyle') {
         // Remove ALL injected download buttons across the page
         document.querySelectorAll('.ig-dl-btn.single-dl').forEach(el => el.remove());
@@ -1522,3 +1555,541 @@ document.body.addEventListener('click', async (e) => {
         }
     }
 });
+
+// ============================================================
+// Custom Video Controls Engine
+// ============================================================
+let _videoControlsObserver = null;
+
+function injectVideoControls() {
+    if (_videoControlsObserver) return; // Already observing
+
+    function setupVideo(video) {
+        if (video.dataset.megahubControls) return;
+        video.dataset.megahubControls = 'true';
+
+        // Wait for the video to have a proper parent
+        const container = video.parentElement;
+        if (!container) return;
+
+        // Find the root article or main container for CSS scoping
+        let root = video.closest('article');
+        if (!root) {
+            let curr = video.parentElement;
+            while (curr && curr !== document.body) {
+                // Pinpoint the localized wrapper by checking for any standard sibling Native Control SVG
+                if (curr.querySelector('svg[aria-label*="Like" i], svg[aria-label*="udio" i], svg[aria-label*="Share" i], svg[aria-label*="Comment" i]')) {
+                    root = curr;
+                    break;
+                }
+                curr = curr.parentElement;
+            }
+        }
+        root = root || document.body;
+        root.classList.add('megahub-video-root');
+
+        // Ensure container is positioned so our absolute overlay targets it
+        if (window.getComputedStyle(container).position === 'static') {
+            container.style.position = 'relative';
+        }
+
+        // --- Build UI ---
+        const controlsWrap = document.createElement('div');
+        controlsWrap.className = 'megahub-video-controls';
+
+        // Gradient background
+        const gradient = document.createElement('div');
+        gradient.className = 'megahub-vc-gradient';
+        gradient.style.height = `${_videoControlsGradientHeight}px`;
+
+        // Play/Pause Button
+        const playBtn = document.createElement('button');
+        playBtn.className = 'megahub-vc-btn megahub-vc-play';
+        playBtn.innerHTML = `<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+
+        // Time indicator
+        const timeInd = document.createElement('div');
+        timeInd.className = 'megahub-vc-time';
+        timeInd.innerText = '0:00 / 0:00';
+
+        // Progress bar
+        const progressWrap = document.createElement('div');
+        progressWrap.className = 'megahub-vc-progress-wrap';
+        const progressBar = document.createElement('div');
+        progressBar.className = 'megahub-vc-progress-bar';
+        const progressFill = document.createElement('div');
+        progressFill.className = 'megahub-vc-progress-fill';
+        progressBar.appendChild(progressFill);
+        progressWrap.appendChild(progressBar);
+
+        // Volume/Mute Button (Custom sleek SVG, positioned right after play)
+        const muteBtn = document.createElement('button');
+        muteBtn.className = 'megahub-vc-btn megahub-vc-mute';
+        muteBtn.innerHTML = `<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`;
+
+        // Fullscreen Button
+        const fsBtn = document.createElement('button');
+        fsBtn.className = 'megahub-vc-btn megahub-vc-fs';
+        fsBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`;
+
+        // Speed Control Group (Arrows + Dropdown Menu)
+        const speedGroup = document.createElement('div');
+        speedGroup.className = 'megahub-vc-speed-group';
+
+        const speedDown = document.createElement('button');
+        speedDown.className = 'megahub-vc-speed-nav';
+        speedDown.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>`;
+
+        // The circular button that shows current speed and toggles the menu
+        const speedValBtn = document.createElement('button');
+        speedValBtn.className = 'megahub-vc-speed-val-btn';
+        speedValBtn.innerText = '1x';
+
+        const speedUp = document.createElement('button');
+        speedUp.className = 'megahub-vc-speed-nav';
+        speedUp.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+
+        // The Dropdown Menu
+        const speedMenu = document.createElement('div');
+        speedMenu.className = 'megahub-vc-speed-menu';
+        const speedsList = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+        speedsList.forEach(s => {
+            const item = document.createElement('div');
+            item.className = 'megahub-vc-speed-item';
+            item.innerText = s + 'x';
+            item.dataset.speed = s;
+            speedMenu.appendChild(item);
+        });
+
+        speedGroup.append(speedDown, speedValBtn, speedMenu, speedUp);
+
+        // Snapshot Button
+        const snapBtn = document.createElement('button');
+        snapBtn.className = 'megahub-vc-btn megahub-vc-snap';
+        snapBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>`;
+
+        const row = document.createElement('div');
+        row.className = 'megahub-vc-row';
+        row.append(playBtn, timeInd, progressWrap, speedGroup, snapBtn, fsBtn, muteBtn);
+
+        controlsWrap.append(gradient, row);
+        container.appendChild(controlsWrap);
+
+        // --- Global Mute State Sync ---
+        // Instead of fighting IG's React state with localStorage, we will proxy clicks
+        // directly to IG's native hidden audio button. This guarantees seamless native persistence.
+
+        // Keep UI in sync with actual volume changes
+        video.addEventListener('volumechange', updateUI);
+
+        // --- Persistent Proxy Tag ---
+        // Instagram native UI hides the tag icon when not hovered.
+        // To keep it persistent globally, this proxy is attached to the video container.
+        const proxyTag = document.createElement('button');
+        proxyTag.className = 'megahub-proxy-tag';
+        proxyTag.style.display = 'none'; // hidden by default until native is found
+        proxyTag.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>`;
+        container.appendChild(proxyTag);
+
+        let nativeTagNode = null;
+        let nativeAudioNode = null;
+
+        const getExactButtonWrapper = (svgNode) => {
+            if (!svgNode) return null;
+            let curr = svgNode.parentElement;
+            let depth = 0;
+            let bgNode = null;
+
+            // Walk up to 4 levels looking for an opaque background color (the grey circle)
+            while (curr && curr !== root && depth < 4) {
+                const style = window.getComputedStyle(curr);
+                if (style.backgroundColor && style.backgroundColor !== 'rgba(0, 0, 0, 0)' && style.backgroundColor !== 'transparent') {
+                    // Safety check to avoid hiding large overlay containers
+                    const rect = curr.getBoundingClientRect();
+                    if (rect.width > 0 && rect.width < 100 && rect.height > 0 && rect.height < 100) {
+                        bgNode = curr;
+                        break;
+                    }
+                }
+                curr = curr.parentElement;
+                depth++;
+            }
+
+            if (bgNode) return bgNode;
+
+            // Fallback to semantic tags if no standalone background container is found
+            return svgNode.closest('a, button, div[role="button"], div[role="link"]') || svgNode.parentElement;
+        };
+
+        let hasFoundTagNode = false;
+        let hasFoundAudioNode = false;
+        let nativeBottomOverlay = null;
+        const isReelsContext = !video.closest('article'); // Reels videos are NOT inside <article>
+
+        // --- Reels: Toggle controls-active on hover for content shift ---
+        if (isReelsContext) {
+            container.addEventListener('mouseenter', () => {
+                root.classList.add('megahub-controls-active');
+            });
+            container.addEventListener('mouseleave', () => {
+                if (!_videoControlsPersistent) {
+                    root.classList.remove('megahub-controls-active');
+                }
+            });
+            if (_videoControlsPersistent) {
+                root.classList.add('megahub-controls-active');
+            }
+        }
+
+        const checkNativeNodes = () => {
+            const isDisabled = document.documentElement.classList.contains('megahub-video-controls-disabled');
+
+            // --- Tag Proxy Node ---
+            if (!hasFoundTagNode) {
+                const allTagSvgs = root.querySelectorAll('svg[aria-label*="Tag" i], svg[aria-label*="tag" i], svg[aria-label*="person" i]');
+                let targetTagSvg = null;
+                for (let s of allTagSvgs) {
+                    // Safe-guard: Reject any icon embedded in an anchor link (e.g. Profile Pictures)
+                    if (!s.closest('.megahub-proxy-tag') && !s.closest('.megahub-video-controls') && !s.closest('a')) {
+                        targetTagSvg = s; break;
+                    }
+                }
+                if (targetTagSvg) {
+                    nativeTagNode = getExactButtonWrapper(targetTagSvg);
+                    if (nativeTagNode) hasFoundTagNode = true;
+                }
+            }
+
+            if (!isDisabled && nativeTagNode) {
+                proxyTag.style.display = 'flex';
+                // Restored hiding logic per user request (Safely guarded by !closest('a'))
+                nativeTagNode.classList.add('megahub-hidden-native');
+            } else {
+                proxyTag.style.display = 'none';
+                if (nativeTagNode) nativeTagNode.classList.remove('megahub-hidden-native');
+            }
+
+            // --- Audio Proxy Node ---
+            if (!hasFoundAudioNode) {
+                const allAudioSvgs = root.querySelectorAll('svg[aria-label*="udio" i], svg[aria-label*="Audio" i], svg[aria-label*="Muted" i], svg[aria-label*="muted" i], svg[aria-label*="صوت" i]');
+                let targetAudioSvg = null;
+                for (let s of allAudioSvgs) {
+                    // Ignore elements structurally wrapped in anchor links (e.g., Profile picture embedded audio icons)
+                    if (!s.closest('.megahub-video-controls') && !s.closest('a')) {
+                        targetAudioSvg = s; break;
+                    }
+                }
+                if (targetAudioSvg) {
+                    // Find strictly the precise wrapper that acts as the grey circle, ignoring huge wrappers
+                    nativeAudioNode = getExactButtonWrapper(targetAudioSvg);
+                    if (nativeAudioNode) hasFoundAudioNode = true;
+
+                    // --- Reels: Find the bottom overlay container by walking up from the audio SVG ---
+                    if (isReelsContext && !nativeBottomOverlay) {
+                        const containerRect = container.getBoundingClientRect();
+                        let el = targetAudioSvg.parentElement;
+                        for (let i = 0; i < 12 && el && el !== root && el !== document.body; i++) {
+                            const rect = el.getBoundingClientRect();
+                            // The bottom overlay should span at least 50% of the video width
+                            // and be positioned near the bottom of the container
+                            if (rect.width > containerRect.width * 0.5 &&
+                                rect.bottom > containerRect.bottom - 30 &&
+                                rect.height > 40 && rect.height < containerRect.height * 0.6) {
+                                nativeBottomOverlay = el;
+                                el.classList.add('megahub-native-bottom-overlay');
+                                break;
+                            }
+                            el = el.parentElement;
+                        }
+                    }
+                }
+            }
+
+            if (!isDisabled && nativeAudioNode) {
+                nativeAudioNode.classList.add('megahub-hidden-native');
+            } else if (nativeAudioNode) {
+                nativeAudioNode.classList.remove('megahub-hidden-native');
+            }
+        };
+
+        const checkInterval = setInterval(() => {
+            if (!video.isConnected) {
+                clearInterval(checkInterval); // cleanup
+                return;
+            }
+            // CRITICAL CPU LIMITER: Only run heavy DOM queries if the video is actively engaged
+            if (video.paused && !video.classList.contains('mh-gpu-active')) return;
+
+            checkNativeNodes();
+        }, 200);
+
+        proxyTag.onclick = (e) => {
+            e.preventDefault(); e.stopPropagation();
+            if (nativeTagNode) {
+                const clickEvent = new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                });
+                nativeTagNode.dispatchEvent(clickEvent);
+            }
+        };
+
+        // --- Logic & Event Listeners ---
+        function formatTime(sec) {
+            if (isNaN(sec)) return '0:00';
+            const m = Math.floor(sec / 60);
+            const s = Math.floor(sec % 60);
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        let _lastPausedState = null;
+        let _lastMutedState = null;
+        let _lastFsState = null;
+
+        function updateUI() {
+            // Dynamic GPU Layer Management: Only forcing active playing video to save VRAM
+            if (video.paused || video.ended) {
+                video.classList.remove('mh-gpu-active');
+            } else {
+                video.classList.add('mh-gpu-active');
+            }
+
+            // Update Play/Pause SVG (Cached to prevent DOM parsing overhead 4x a second)
+            if (video.paused !== _lastPausedState) {
+                _lastPausedState = video.paused;
+                if (video.paused) {
+                    playBtn.innerHTML = `<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+                } else {
+                    playBtn.innerHTML = `<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`;
+                }
+            }
+
+            // Update Mute SVG (Custom Sleek SVG)
+            const currentMuted = (video.muted || video.volume === 0);
+            if (currentMuted !== _lastMutedState) {
+                _lastMutedState = currentMuted;
+                if (currentMuted) {
+                    muteBtn.innerHTML = `<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>`;
+                } else {
+                    muteBtn.innerHTML = `<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`;
+                }
+            }
+
+            // Update Fullscreen SVG Toggle
+            const currentFs = !!document.fullscreenElement;
+            if (currentFs !== _lastFsState) {
+                _lastFsState = currentFs;
+                if (currentFs) {
+                    fsBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path></svg>`;
+                } else {
+                    fsBtn.innerHTML = `<svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`;
+                }
+            }
+
+            // Update time & progress
+            const cur = video.currentTime || 0;
+            const dur = video.duration || 1; // avoid /0
+            timeInd.innerText = `${formatTime(cur)} / ${formatTime(dur)}`;
+            progressFill.style.width = `${(cur / dur) * 100}%`;
+
+            // Sync speed display in case it changed externally
+            speedValBtn.innerText = video.playbackRate + 'x';
+
+            // Highlight active menu item
+            Array.from(speedMenu.children).forEach(child => {
+                child.classList.toggle('active', parseFloat(child.dataset.speed) === video.playbackRate);
+            });
+        }
+
+        // Listeners on Video
+        video.addEventListener('play', updateUI);
+        video.addEventListener('pause', updateUI);
+        video.addEventListener('timeupdate', updateUI);
+        video.addEventListener('durationchange', updateUI);
+        video.addEventListener('volumechange', updateUI);
+
+        const fsChangeHandler = () => {
+            if (!video.isConnected) {
+                document.removeEventListener('fullscreenchange', fsChangeHandler);
+                return;
+            }
+            updateUI();
+        };
+        document.addEventListener('fullscreenchange', fsChangeHandler);
+
+        // Listeners on Controls (stop propagation so IG doesn't catch them)
+        // Use pointerdown instead of click for instant responsiveness without waiting for hover
+        playBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            if (video.paused) video.play(); else video.pause();
+        });
+
+        muteBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); e.stopPropagation();
+
+            // If we found Instagram's exact native audio wrapper, dispatch a real click event
+            // React synthesizes events, sometimes primitive .click() fails on divs, but MouseEvent always bubbles nicely
+            if (nativeAudioNode) {
+                const clickEvent = new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                });
+                nativeAudioNode.dispatchEvent(clickEvent);
+            } else {
+                // Fallback in case IG structure changes radically
+                const newState = !video.muted;
+                video.muted = newState;
+                setTimeout(() => { video.muted = newState; }, 10);
+            }
+        });
+
+        fsBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                container.requestFullscreen();
+            }
+        });
+
+        function updateSpeed(deltaOrVal, isDelta = true) {
+            let nextVal;
+            if (isDelta) {
+                let cur = video.playbackRate;
+                let idx = speedsList.indexOf(cur);
+                if (idx === -1) idx = 3; // default to 1x
+                idx += deltaOrVal;
+                idx = Math.max(0, Math.min(speedsList.length - 1, idx)); // clamp
+                nextVal = speedsList[idx];
+            } else {
+                nextVal = deltaOrVal;
+            }
+            video.playbackRate = nextVal;
+            speedValBtn.innerText = nextVal + 'x';
+            updateUI();
+        }
+
+        speedDown.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            updateSpeed(-1, true);
+        });
+
+        speedUp.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            updateSpeed(1, true);
+        });
+
+        // Toggle the speed menu
+        speedValBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            speedMenu.classList.toggle('megahub-vc-speed-menu-open');
+        });
+
+        // Handle menu item clicks
+        speedMenu.addEventListener('pointerdown', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            if (e.target.classList.contains('megahub-vc-speed-item')) {
+                updateSpeed(parseFloat(e.target.dataset.speed), false);
+                speedMenu.classList.remove('megahub-vc-speed-menu-open');
+            }
+        });
+
+        // Close menu if user clicks anywhere else
+        document.addEventListener('pointerdown', (e) => {
+            if (!speedGroup.contains(e.target)) {
+                speedMenu.classList.remove('megahub-vc-speed-menu-open');
+            }
+        });
+
+        snapBtn.addEventListener('click', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                canvas.toBlob(blob => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `MegaHub_Snapshot_${Date.now()}.png`;
+                    a.click();
+                    setTimeout(() => URL.revokeObjectURL(url), 1000);
+                }, 'image/png');
+
+                // Visual feedback
+                snapBtn.style.opacity = '0.5';
+                setTimeout(() => snapBtn.style.opacity = '', 200);
+            } catch (err) {
+                console.error("Mega Hub: Snapshot failed", err);
+            }
+        });
+
+        // Timeline Scrubbing
+        let isDragging = false;
+        function setProgress(e) {
+            const rect = progressBar.getBoundingClientRect();
+            let pos = (e.clientX - rect.left) / rect.width;
+            pos = Math.max(0, Math.min(1, pos));
+            if (video.duration) video.currentTime = pos * video.duration;
+        }
+
+        progressWrap.addEventListener('mousedown', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            isDragging = true;
+            setProgress(e);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) setProgress(e);
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        // Click on the controls area itself should toggle play/pause exactly like IG does
+        controlsWrap.addEventListener('click', (e) => {
+            // Only if they clicked the background, not the buttons row
+            if (e.target === controlsWrap) {
+                e.stopPropagation(); // Stop IG's overlay from intercepting
+                if (video.paused) video.play();
+                else video.pause();
+            }
+        });
+
+        // Initial setup
+        updateUI();
+    }
+
+    // Run on existing
+    document.querySelectorAll('video').forEach(setupVideo);
+
+    // Watch for new videos (Debounced to prevent CPU screaming on continuous scroll environments like Reels)
+    let _vcDebounce = null;
+    _videoControlsObserver = new MutationObserver(mutations => {
+        let shouldCheck = false;
+        for (const m of mutations) {
+            if (m.addedNodes.length > 0) {
+                shouldCheck = true;
+                break;
+            }
+        }
+        if (shouldCheck) {
+            if (_vcDebounce) return;
+            _vcDebounce = setTimeout(() => {
+                document.querySelectorAll('video:not([data-megahub-controls])').forEach(setupVideo);
+                _vcDebounce = null;
+            }, 500);
+        }
+    });
+
+    _videoControlsObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+// Global URL State Tracker
+setInterval(() => {
+    document.documentElement.classList.toggle('mh-is-reels', window.location.pathname.includes('/reels/'));
+}, 1000);

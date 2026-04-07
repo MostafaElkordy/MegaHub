@@ -1,16 +1,29 @@
 /* Mega Hub - Optimized Download Button Styles */
 
 :root {
+    /* Fonts & Brand Colors */
     --mh-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --mh-pink: rgba(225, 48, 108, 0.9);
-    --mh-success-color: #58d68d;
+    --mh-blue: #0095f6;
+    --mh-success-color: #2ecc71;
     --mh-error-color: #ff6b6b;
+    --mh-loading-color: var(--mh-success-color);
+
+    /* Backgrounds & Strokes */
     --mh-dark-bg: rgba(0, 0, 0, 0.7);
     --mh-toast-bg: rgba(20, 20, 20, 0.95);
     --mh-stroke-dark: #262626;
+
+    /* Effects & Transitions */
     --mh-transition-speed: 0.2s ease;
     --mh-shadow-base: 0 4px 10px rgba(0, 0, 0, 0.3);
-    --mh-loading-color: var(--mh-success-color);
+
+    /* Core Z-Index Architecture */
+    --mh-z-grid: 100;
+    --mh-z-button: 9999;
+    --mh-z-controls: 2147483640;
+    --mh-z-dropdown: 2147483645;
+    --mh-z-max: 2147483647;
 }
 
 /* ============================================================ */
@@ -70,7 +83,7 @@
     position: absolute;
     top: 10px;
     right: 10px;
-    z-index: 9999;
+    z-index: var(--mh-z-button);
     background-color: var(--mh-dark-bg);
     color: white;
     border: 1px solid rgba(255, 255, 255, 0.3);
@@ -154,7 +167,7 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--mh-transition-speed);
-    z-index: 100;
+    z-index: var(--mh-z-grid);
     contain: strict;
     /* Strict containment because size is fixed by inset: 0 */
 }
@@ -238,7 +251,7 @@
     position: fixed;
     bottom: 24px;
     right: 24px;
-    z-index: 2147483647;
+    z-index: var(--mh-z-max);
     display: flex;
     flex-direction: column-reverse;
     /* Newest at bottom */
@@ -411,7 +424,7 @@
     position: fixed;
     bottom: 24px;
     left: 24px;
-    z-index: 2147483647;
+    z-index: var(--mh-z-max);
     display: flex;
     flex-direction: column;
     pointer-events: none;
@@ -579,4 +592,353 @@ body.megahub-select-mode .megahub-grid-overlay {
 .megahub-avatar-dl-btn svg {
     width: 22px;
     height: 22px;
+}
+
+/* ============================================================ */
+/* Custom Video Controls Engine                                 */
+/* ============================================================ */
+
+.megahub-video-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 38px;
+    z-index: var(--mh-z-controls);
+    /* Highest possible safely below toasts */
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    /* Let parent handle hover, this catches clicks via children */
+}
+
+html.megahub-video-controls-disabled .megahub-video-controls {
+    display: none !important;
+}
+
+/* Parent container hover trigger */
+div:hover>.megahub-video-controls,
+html.mh-persistent-controls .megahub-video-controls {
+    opacity: 1 !important;
+}
+
+.megahub-vc-gradient {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    /* Extended height for a cinematic fade */
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.2) 50%, transparent 100%);
+    border-top: none;
+    pointer-events: none;
+    /* just visual */
+    z-index: -1;
+}
+
+.megahub-vc-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    gap: 4px;
+    width: 100%;
+    box-sizing: border-box;
+    pointer-events: none;
+    /* Let empty space pass clicks through */
+}
+
+.megahub-vc-btn {
+    background: none;
+    border: none;
+    padding: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    opacity: 0.9;
+    transition: transform 0.1s, opacity 0.2s;
+    outline: none;
+    font-weight: normal !important;
+    /* Force no bold on hover */
+    flex-shrink: 0;
+    pointer-events: auto;
+    /* Catch clicks on buttons only */
+}
+
+.megahub-vc-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+    font-weight: normal !important;
+}
+
+.megahub-vc-btn svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.megahub-vc-play svg {
+    fill: currentColor;
+    /* override stroke for play/pause solid */
+    stroke: none;
+}
+
+.megahub-vc-time {
+    color: white;
+    font-size: 10.5px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-weight: 600;
+    min-width: 60px;
+    text-align: center;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+}
+
+.megahub-vc-progress-wrap {
+    flex: 1 1 auto;
+    /* Allow it to grow dynamically, very helpful for Reels */
+    height: 24px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    min-width: 50px;
+    pointer-events: auto;
+    /* Catch clicks */
+}
+
+.megahub-vc-progress-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+    transition: height 0.1s;
+}
+
+.megahub-vc-progress-wrap:hover .megahub-vc-progress-bar {
+    height: 6px;
+}
+
+.megahub-vc-progress-fill {
+    height: 100%;
+    background: white;
+    width: 0%;
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+/* Speed Control Group */
+.megahub-vc-speed-group {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 2px;
+    user-select: none;
+    position: relative;
+    pointer-events: auto;
+    /* Catch clicks */
+}
+
+.megahub-vc-speed-nav {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    opacity: 0.7;
+    transition: opacity 0.2s, transform 0.1s;
+    outline: none;
+}
+
+.megahub-vc-speed-nav:hover {
+    opacity: 1;
+}
+
+.megahub-vc-speed-nav svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.megahub-vc-speed-val-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    font-size: 9px;
+    font-weight: 500;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0 0 1px 0;
+    /* optical center fix */
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    letter-spacing: -0.5px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    outline: none;
+}
+
+.megahub-vc-speed-val-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Speed Dropdown Menu */
+.megahub-vc-speed-menu {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: rgba(20, 20, 20, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    padding: 6px 0;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    /* Bouncy enter */
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: var(--mh-z-dropdown);
+}
+
+.megahub-vc-speed-menu-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+}
+
+.megahub-vc-speed-item {
+    padding: 8px 20px;
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.1s;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+.megahub-vc-speed-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.megahub-vc-speed-item.active {
+    color: var(--mh-pink);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Mute icon: fill the speaker body polygon, keep stroke on lines/paths */
+.megahub-vc-mute svg polygon {
+    fill: currentColor;
+}
+
+/* ============================================================ */
+/* Reels: Shift native bottom content up when controls active    */
+/* ============================================================ */
+
+/* When controls are visible on reels, shift the native bottom overlay
+   (username, description, audio info) upward so they remain clickable
+   above the 38px controls bar. JS toggles megahub-controls-active on hover. */
+.megahub-controls-active .megahub-native-bottom-overlay {
+    transform: translateY(-45px) !important;
+    transition: transform 0.3s ease !important;
+}
+
+.megahub-native-bottom-overlay {
+    transition: transform 0.3s ease !important;
+}
+
+
+/* ============================================================ */
+/* Resolving Overlap with Instagram Native Icons                */
+/* ============================================================ */
+
+/* JS-Targeted class to securely hide EXACT native wrappers (grey circles) without hiding metadata overlays */
+.megahub-hidden-native {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Persistent Proxy Tag Icon (Mimicking Instagram's exact native aesthetic) */
+.megahub-proxy-tag {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    background: rgba(255, 255, 255, 0.2) !important;
+    backdrop-filter: none !important;
+    border: none !important;
+    color: white;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: var(--mh-z-dropdown);
+    box-shadow: none !important;
+}
+
+.megahub-proxy-tag:hover {
+    background: rgba(255, 255, 255, 0.2) !important;
+    transform: none !important;
+}
+
+.megahub-proxy-tag svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+/* ============================================================ */
+/* Fullscreen Fixes                                             */
+/* ============================================================ */
+
+/* Ensure videos do not stretch out of proportion when in fullscreen */
+:fullscreen .megahub-video-root video,
+:-webkit-full-screen .megahub-video-root video {
+    object-fit: contain !important;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* ============================================================ */
+/* Magic GPU Sharpness Enforcer                                 */
+/* ============================================================ */
+
+/* Forces Chrome to bypass MPO/Software blending and keep the video in a pure GPU layer, resulting in permanent high contrast and sharpness */
+html.mh-gpu-acceleration video.mh-gpu-active {
+    filter: brightness(1.001) contrast(1.001) saturate(1.001) !important;
+    backface-visibility: hidden !important;
+    will-change: transform, filter !important;
+}
+
+/* Punch through heavy Instagram obfuscation/dim overlays on Reels */
+html.mh-gpu-acceleration.mh-is-reels video.mh-gpu-active {
+    filter: brightness(1.04) contrast(1.03) saturate(1.02) !important;
 }

@@ -74,9 +74,9 @@ header h1 {
 }
 
 .setting-group {
-  margin-bottom: 20px;
+  margin-bottom: 12px;
   background-color: var(--secondary-bg);
-  padding: 15px;
+  padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid var(--border-color);
 }
