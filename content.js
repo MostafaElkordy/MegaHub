@@ -2428,7 +2428,9 @@ function mhReturnFromTheater() {
     const { igParent, igNextSibling, video } = _theaterState;
     if (!igParent || !igParent.isConnected) return;
     const savedTime = video ? video.currentTime : 0;
-    // Always pause before returning to prevent ghost audio in Reels
+    const wasPaused = video ? video.paused : true;
+    
+    // Always pause before returning to prevent ghost audio in Reels during DOM shift
     if (video) video.pause();
 
     // Return the video element back to its original IG parent
@@ -2457,6 +2459,10 @@ function mhReturnFromTheater() {
 
     if (video) {
         video.currentTime = savedTime;
+        // Resume playing if it was playing before we moved it
+        if (!wasPaused) {
+            video.play().catch(e => console.warn('MegaHub: Resuming playback failed', e));
+        }
     }
 }
 
