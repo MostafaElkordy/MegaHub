@@ -2398,6 +2398,7 @@ function mhLoadIntoTheater(video, autoplay) {
     wrapper.appendChild(video);
 
     // Move UI controls to the theater wrapper
+    // Nav arrows are generic (use _theaterState.video) — skip if wrapper already has them to prevent flicker
     [
         '.megahub-video-controls',
         '.megahub-fs-nav-up',
@@ -2406,13 +2407,17 @@ function mhLoadIntoTheater(video, autoplay) {
         '.megahub-fs-nav-right',
         '.megahub-proxy-tag'
     ].forEach(selector => {
+        if (selector.includes('fs-nav') && wrapper.querySelector(selector)) return;
         const el = igParent.querySelector(selector);
         if (el) wrapper.appendChild(el);
     });
 
     _injectActionToolbar(wrapper, video, igParent);
 
-    _theaterDialog.appendChild(wrapper);
+    // Only append wrapper if not already in dialog (avoids reflow flicker on re-navigation)
+    if (wrapper.parentElement !== _theaterDialog) {
+        _theaterDialog.appendChild(wrapper);
+    }
 
     video.currentTime = savedTime;
     video.muted = _theaterState.muted;
@@ -2552,8 +2557,13 @@ document.addEventListener('wheel', (e) => {
     }, 500);
 }, { passive: false, capture: true });
 
+let _mhNavLock = false;
 function mhNavigateFullscreen(directionStep) {
     if (!_theaterState.active || !_theaterState.video) return;
+    if (_mhNavLock) return; // Prevent overlapping navigations (audio/visual glitch guard)
+    _mhNavLock = true;
+    // Safety auto-release after 4s to prevent permanent lock on edge-case failures
+    const lockTimer = setTimeout(() => { _mhNavLock = false; }, 4000);
 
     const currentVideo = _theaterState.video;
 
@@ -2602,7 +2612,6 @@ function mhNavigateFullscreen(directionStep) {
 
         // Wait for IG to load the new reel in the background
         _waitForNewVideo(currentVideo, oldSrc, (newVideo) => {
-            if (snapshot) snapshot.remove(); // Unfreeze visually immediately
 
             if (!newVideo) {
                 // Timeout — video and controls are already in the wrapper
@@ -2612,17 +2621,17 @@ function mhNavigateFullscreen(directionStep) {
                 _theaterState.igParent = oldIgParent;
                 _theaterState.igNextSibling = oldIgNextSibling;
                 currentVideo.muted = _theaterState.muted;
+                if (snapshot) snapshot.remove();
+                clearTimeout(lockTimer); _mhNavLock = false;
                 return;
             }
 
             if (newVideo !== currentVideo) {
                 // Smooth swap: return OLD controls to OLD IG parent exactly the millisecond before picking up new ones
+                // Return ONLY video-specific controls (controls bar, proxy tag) to old parent.
+                // Nav arrows stay in wrapper — they're generic and preventing flicker.
                 [
                     '.megahub-video-controls',
-                    '.megahub-fs-nav-up',
-                    '.megahub-fs-nav-down',
-                    '.megahub-fs-nav-left',
-                    '.megahub-fs-nav-right',
                     '.megahub-proxy-tag'
                 ].forEach(selector => {
                     const el = wrapper.querySelector(selector);
@@ -2633,6 +2642,7 @@ function mhNavigateFullscreen(directionStep) {
                 if (oldBar) oldBar.remove();
 
                 // Safely detach old video from our wrapper
+                currentVideo.pause(); // Stop audio before detaching to prevent overlap
                 currentVideo.remove();
 
                 // Return old video to IG DOM if the parent still exists
@@ -2646,6 +2656,8 @@ function mhNavigateFullscreen(directionStep) {
 
                 // Load new video into theater (reuses wrapper, updates state)
                 mhLoadIntoTheater(newVideo, true);
+                if (snapshot) snapshot.remove(); // Remove snapshot AFTER new video is in place
+                clearTimeout(lockTimer); _mhNavLock = false;
             } else {
                 // IG reused same video element with new source — video and controls already in wrapper
                 // Preserve correct IG parent references without calling mhLoadIntoTheater
@@ -2655,6 +2667,8 @@ function mhNavigateFullscreen(directionStep) {
                 _theaterState.igNextSibling = oldIgNextSibling;
                 newVideo.muted = _theaterState.muted;
                 newVideo.play();
+                if (snapshot) snapshot.remove();
+                clearTimeout(lockTimer); _mhNavLock = false;
             }
         });
         return;
@@ -2670,6 +2684,7 @@ function mhNavigateFullscreen(directionStep) {
     const currIdx = allVideos.indexOf(currentVideo);
     if (currIdx === -1) {
         mhLoadIntoTheater(currentVideo, false);
+        clearTimeout(lockTimer); _mhNavLock = false;
         return;
     }
 
@@ -2677,6 +2692,7 @@ function mhNavigateFullscreen(directionStep) {
 
     if (targetIdx >= 0 && targetIdx < allVideos.length) {
         mhLoadIntoTheater(allVideos[targetIdx], true);
+        clearTimeout(lockTimer); _mhNavLock = false;
         return;
     }
 
@@ -2703,6 +2719,7 @@ function mhNavigateFullscreen(directionStep) {
     } else {
         mhLoadIntoTheater(currentVideo, false);
     }
+    clearTimeout(lockTimer); _mhNavLock = false;
 }
 
 // Find IG's native Next/Previous button in the popup/modal view
