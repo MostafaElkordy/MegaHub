@@ -2053,12 +2053,10 @@ function injectVideoControls() {
         muteBtn.addEventListener('pointerdown', (e) => {
             e.preventDefault(); e.stopPropagation();
 
-            // In theater mode, native IG audio button is inaccessible — use direct mute
+            // Update theater state if active, but DO NOT return early
+            // We must click the native IG audio node to sync the global state
             if (typeof _theaterState !== 'undefined' && _theaterState.active) {
-                video.muted = !video.muted;
-                _theaterState.muted = video.muted;
-                updateUI();
-                return;
+                _theaterState.muted = !video.muted;
             }
 
             // Primary: Toggle video.muted directly — most reliable across all DOM states
