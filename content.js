@@ -2605,11 +2605,13 @@ function mhNavigateFullscreen(directionStep) {
             if (snapshot) snapshot.remove(); // Unfreeze visually immediately
 
             if (!newVideo) {
-                // Timeout — restore old video state correctly to bring back lost controls
+                // Timeout — video and controls are already in the wrapper
+                // Restore correct state references without calling mhLoadIntoTheater
+                // (mhLoadIntoTheater would set igParent to wrapper, corrupting state)
                 _theaterState.video = currentVideo;
                 _theaterState.igParent = oldIgParent;
                 _theaterState.igNextSibling = oldIgNextSibling;
-                mhLoadIntoTheater(currentVideo, false);
+                currentVideo.muted = _theaterState.muted;
                 return;
             }
 
@@ -2641,10 +2643,19 @@ function mhNavigateFullscreen(directionStep) {
                         oldIgParent.appendChild(currentVideo);
                     }
                 }
-            }
 
-            // Load new video into theater (reuses wrapper, updates state)
-            mhLoadIntoTheater(newVideo, true);
+                // Load new video into theater (reuses wrapper, updates state)
+                mhLoadIntoTheater(newVideo, true);
+            } else {
+                // IG reused same video element with new source — video and controls already in wrapper
+                // Preserve correct IG parent references without calling mhLoadIntoTheater
+                // (mhLoadIntoTheater would set igParent to wrapper, corrupting all future navigations)
+                _theaterState.video = newVideo;
+                _theaterState.igParent = oldIgParent;
+                _theaterState.igNextSibling = oldIgNextSibling;
+                newVideo.muted = _theaterState.muted;
+                newVideo.play();
+            }
         });
         return;
     }
@@ -2698,14 +2709,17 @@ function mhNavigateFullscreen(directionStep) {
 function _findIgNavButton(direction) {
     const isNext = direction > 0;
 
-    // Method 1: SVG Polyline Chevron Geometry (Language-Agnostic)
-    // Instagram's carousel chevrons use mathematically consistent polyline coordinates
-    const chevronPoints = isNext ? '9 18 15 12 9 6' : '15 18 9 12 15 6';
+    // Method 1: SVG Path Chevron Geometry (Language-Agnostic)
+    // Instagram's navigation chevrons use <path> elements with mathematically consistent coordinates
+    // Both chevrons share '17.502' in their path data, differentiated by unique vertex coordinates
+    const directionMarker = isNext ? '15.087' : '8.913';
     const allSvgs = document.querySelectorAll('button svg, [role="button"] svg');
     for (const svg of allSvgs) {
         if (svg.closest('.megahub-fs-nav-btn') || svg.closest('.mh-action-btn')) continue;
-        const polyline = svg.querySelector('polyline');
-        if (polyline && polyline.getAttribute('points')?.includes(chevronPoints)) {
+        const path = svg.querySelector('path');
+        if (!path) continue;
+        const d = path.getAttribute('d') || '';
+        if (d.includes('17.502') && d.includes(directionMarker)) {
             const btn = svg.closest('button, [role="button"]');
             if (btn && btn.offsetParent !== null) return btn;
         }
