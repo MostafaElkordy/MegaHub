@@ -894,7 +894,6 @@ html[data-megahub-vc="true"] .megahub-hidden-native {
     /* Instagram native icon color */
     cursor: pointer;
     z-index: 999999;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     transition: all 0.2s ease-in-out;
     border: none;
 }
@@ -1116,7 +1115,6 @@ body>.IG_TOASTS_OR_DIALOGS {
     border-radius: 50%;
     color: #262626;
     /* Match Instagram icon color */
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     display: flex;
     align-items: center;
     justify-content: center;
