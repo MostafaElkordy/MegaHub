@@ -1097,6 +1097,14 @@ function injectReelButton(container) {
     if (!container || container.querySelector('.ig-dl-btn')) return;
     if (!container.querySelector('video')) return;
 
+    // If overlay mode and hover autoplay are both enabled,
+    // do not inject the black rectangular overlay button on reel grid thumbnails.
+    const isSingleReelPage = /^\/(reel|p)\//.test(window.location.pathname);
+    const isInDialog = !!container.closest('div[role="dialog"]');
+    if (_currentButtonStyle === 'overlay' && _hoverAutoplayEnabled && !isInDialog && !isSingleReelPage) {
+        return;
+    }
+
     const btn = document.createElement('button');
     btn.className = 'ig-dl-btn single-dl';
     btn.appendChild(SVG_TEMPLATES.downloadText.content.cloneNode(true));
