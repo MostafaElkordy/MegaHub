@@ -1066,6 +1066,7 @@ function triggerDownload(blobUrl, filename, isBgUrl) {
 // 2. Reels — full-screen feed and profile reels tab
 // ============================================================
 function injectReelsButtons() {
+    if (_theaterState.active) return;
     if (_currentButtonStyle !== 'overlay') return;
     // Strategy 1: Pressable containers (Instagram's interactive elements)
     document.querySelectorAll('div[data-pressable-container="true"]').forEach(container => {
@@ -1187,6 +1188,7 @@ function injectReelsSidebarButton() {
 // 3. Single post page (/p/xxx, /reel/xxx)
 // ============================================================
 function injectSinglePostButtons() {
+    if (_theaterState.active) return;
     if (_currentButtonStyle !== 'overlay') return;
     const path = window.location.pathname;
     if (!path.startsWith('/p/') && !path.startsWith('/reel/')) return;
