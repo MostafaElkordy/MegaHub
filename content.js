@@ -300,32 +300,39 @@ chrome.runtime.onMessage.addListener((request) => {
 // ============================================================
 // 1. Feed posts (articles in the home feed)
 // ============================================================
-function injectFeedButtons() {
-    if (_currentButtonStyle !== 'overlay') return;
-    if (window.location.pathname.includes('/saved/')) return;
+// Debounced version to prevent excessive DOM updates
+const injectFeedButtons = (() => {
+    let timeout = null;
+    return function debouncedInjectFeedButtons() {
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => {
+            if (_currentButtonStyle !== 'overlay') return;
+            if (window.location.pathname.includes('/saved/')) return;
 
-    const container = document.querySelector('div[role="dialog"]') || document.querySelector('main') || document;
-    const articles = container.querySelectorAll('article');
-    articles.forEach(article => {
-        // Find ALL media elements in the post (handles carousels naturally)
-        const mediaNodes = article.querySelectorAll('video, img[srcset]:not([alt*="profile"]:not([alt*="صورة"])), img[style*="object-fit"]:not([alt*="profile"]):not([alt*="صورة"])');
+            const container = document.querySelector('div[role="dialog"]') || document.querySelector('main') || document;
+            const articles = container.querySelectorAll('article');
+            articles.forEach(article => {
+                // Find ALL media elements in the post (handles carousels naturally)
+                const mediaNodes = article.querySelectorAll('video, img[srcset]:not([alt*="profile"]:not([alt*="صورة"])), img[style*="object-fit"]:not([alt*="profile"]):not([alt*="صورة"])');
 
-        mediaNodes.forEach(media => {
-            // Check if wrapper already has a button
-            const wrapper = media.parentElement;
-            if (!wrapper || wrapper.querySelector('.ig-dl-btn')) return;
+                mediaNodes.forEach(media => {
+                    // Check if wrapper already has a button
+                    const wrapper = media.parentElement;
+                    if (!wrapper || wrapper.querySelector('.ig-dl-btn')) return;
 
-            // Only inject if it's a structural wrapper (ignore tiny icons)
-            if (wrapper.offsetWidth > 150 && wrapper.offsetHeight > 150) {
-                // Ensure wrapper is relative so absolute button anchors properly to the slide
-                const style = window.getComputedStyle(wrapper);
-                if (style.position === 'static') wrapper.style.position = 'relative';
+                    // Only inject if it's a structural wrapper (ignore tiny icons)
+                    if (wrapper.offsetWidth > 150 && wrapper.offsetHeight > 150) {
+                        // Ensure wrapper is relative so absolute button anchors properly to the slide
+                        const style = window.getComputedStyle(wrapper);
+                        if (style.position === 'static') wrapper.style.position = 'relative';
 
-                addDownloadButton(wrapper, article);
-            }
-        });
-    });
-}
+                        addDownloadButton(wrapper, article);
+                    }
+                });
+            });
+        }, 100); // 100ms debounce
+    };
+})();
 
 // ============================================================
 // 1b. Feed posts — Inline arrow in action bar (next to bookmark)
@@ -350,13 +357,9 @@ function injectFeedInlineButtons() {
         const bookmarkSvg = article.querySelector(SELECTORS.bookmark);
         if (!bookmarkSvg) return;
 
-        const bookmarkBtn = bookmarkSvg.closest('button') || bookmarkSvg.closest('div[role="button"]');
-        if (!bookmarkBtn) return;
-
-        const bookmarkWrapper = bookmarkBtn.parentElement;
+        const bookmarkWrapper = bookmarkSvg.closest('button') || bookmarkSvg.closest('div[role="button"]') || bookmarkSvg.parentElement;
         if (!bookmarkWrapper) return;
 
-        // Create the inline download arrow
         const dlBtn = document.createElement('button');
         dlBtn.className = 'megahub-inline-dl';
         dlBtn.title = 'Download';
@@ -576,22 +579,42 @@ async function fetchFromPublicApi(shortcode) {
 }
 
 // ============================================================
-// Add Download Button
-// ============================================================
+/**
+ * Injects a download button overlay into the given media section of an Instagram post.
+ * @param {HTMLElement} mediaSection - The container element for the media (image or video).
+ * @param {HTMLElement} article - The article element representing the Instagram post.
+ */
 function addDownloadButton(mediaSection, article) {
     if (mediaSection.querySelector('.ig-dl-btn')) return;
 
+    // Note: No direct event listener is attached here.
+    // Clicks on this button are handled via event delegation elsewhere in the code (see document.body.addEventListener('click', ...)).
+    // This design improves performance and prevents memory leaks from many individual listeners.
+
     const btn = document.createElement('button');
+    const DOWNLOAD_TEXT = ' Download';
+
     btn.className = 'ig-dl-btn single-dl';
     btn.title = 'Download Media';
-
-    // Overlap the sliding image correctly
-    btn.style.zIndex = '99';
-
+    btn.style.zIndex = '9999';
     btn.appendChild(SVG_TEMPLATES.downloadSmall.content.cloneNode(true));
-    btn.append(' Download');
 
-    mediaSection.appendChild(btn);
+    const textSpan = document.createElement('span');
+    textSpan.textContent = DOWNLOAD_TEXT;
+    textSpan.setAttribute('aria-label', 'Download');
+    btn.appendChild(textSpan);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'megahub-media-btn-overlay';
+    overlay.appendChild(btn);
+
+    const style = window.getComputedStyle(mediaSection);
+    if (style.position === 'static') {
+        mediaSection.style.position = 'relative';
+        mediaSection.style.zIndex = '0'; // Create a new stacking context to ensure overlay is above
+    }
+
+    mediaSection.appendChild(overlay);
 }
 
 /** Format bytes into human-readable string (e.g. "2.4 MB"). */
@@ -1071,19 +1094,19 @@ function injectReelsButtons() {
 }
 
 function injectReelButton(container) {
-    if (container.dataset.megahubInjected) return;
+    if (!container || container.querySelector('.ig-dl-btn')) return;
     if (!container.querySelector('video')) return;
-    if (container.querySelector('.ig-dl-btn')) return;
 
     const btn = document.createElement('button');
     btn.className = 'ig-dl-btn single-dl';
     btn.appendChild(SVG_TEMPLATES.downloadText.content.cloneNode(true));
     btn.style.zIndex = '99999';
 
-    const userLink = container.querySelector('a[href^="/"]');
-    const username = userLink?.textContent?.trim() || 'ig_reel';
+    const style = window.getComputedStyle(container);
+    if (style.position === 'static') {
+        container.style.position = 'relative';
+    }
 
-    container.style.position = 'relative';
     container.appendChild(btn);
     container.dataset.megahubInjected = 'true';
 }
@@ -1124,17 +1147,13 @@ function injectReelsSidebarButton() {
             const userLink = nearestSection.querySelector('a[href^="/"]:not([href*="/explore"])');
             if (userLink) {
                 const uMatch = userLink.href.match(/instagram\.com\/([^/?]+)/);
-                if (uMatch && !['reels', 'reel', 'p', 'explore', 'accounts'].includes(uMatch[1])) {
-                    username = uMatch[1];
-                }
+                if (uMatch) username = uMatch[1];
             }
         }
 
-        // Create the sidebar download button
         const dlBtn = document.createElement('div');
         dlBtn.className = 'megahub-reel-sidebar-btn';
 
-        // Insert at the bottom, outside the Instagram hover bounding box
         const targetParent = actionColumn.parentElement;
         if (!targetParent) return;
 
@@ -1205,8 +1224,6 @@ function injectGridButtons() {
 
         link.style.position = 'relative';
         link.classList.add('megahub-grid-wrapper');
-
-        // Create hover overlay
         const overlay = document.createElement('div');
         overlay.className = 'megahub-grid-overlay';
 
@@ -1254,10 +1271,6 @@ function injectAvatarButton() {
     // Get the clickable wrapper
     const wrapper = avatarImg.closest('div[role="button"], span[role="link"]') || avatarImg.parentElement;
     if (wrapper.dataset.megahubAvatarWrapper) return;
-
-    wrapper.style.position = 'relative';
-    wrapper.dataset.megahubAvatarWrapper = 'true';
-
     const overlay = document.createElement('div');
     overlay.className = 'megahub-avatar-overlay';
 
